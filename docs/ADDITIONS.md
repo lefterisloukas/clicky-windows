@@ -8,6 +8,36 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-14
 
+### feat/june14fixes-after-kokoro — logging + TTS-label fixes
+**Time:** ~14:30 (local, UTC+3)
+**Branch:** `feat/june14fixes-after-kokoro` (cut from `feat/kokorotts`)
+**Author:** Claude Code
+
+Small post-Kokoro polish pass. Four independent fixes, all additive:
+
+- **Provider-accurate response log.** `src/main/companion.ts` always logged
+  `[Clicky] Claude response:` regardless of the active provider. Added a
+  `providerLabel()` helper (anthropic → Claude, openai → OpenAI, openrouter →
+  OpenRouter, gemini → Gemini, else the raw id) and the log line now reflects
+  the real provider.
+- **Console arrow mojibake.** The Unicode arrows (`→` / `←`) in log strings
+  rendered as `ΓåÆ` / `ΓåÉ` in the Windows console (code-page mismatch).
+  Replaced them with ASCII `->` / `<-` in `src/main/companion.ts` (4 lines)
+  and `src/main/screenshot.ts` (1 line).
+- **Readable TTS toggle labels.** The chat quick-toggle showed cramped codes
+  `KOK` / `WIN` / `AI` (the `KOK` read as Greek "κοκ" to the user). Changed to
+  full names `Kokoro` / `Windows` / `OpenAI` in
+  `src/renderer/chat/index.html`. (Supersedes the `KOK/WIN/AI` labels noted in
+  the Kokoro entry below.)
+- **Log the transcript text.** `src/main/audio.ts` logged only
+  `Transcript received, length: N`; it now logs the transcript content too:
+  `Transcript received (length N): <text>`.
+
+**Verification**
+- `npx tsc` exits 0.
+
+---
+
 ### feat/kokorotts — Kokoro as a local, offline TTS provider
 **Time:** ~13:50 (local, UTC+3)
 **Branch:** `feat/kokorotts` (cut from `develop`)
