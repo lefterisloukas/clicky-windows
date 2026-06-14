@@ -95,7 +95,7 @@ export class ScreenCapture {
       if (!source) continue;
       console.log(
         `[screenshot] display[${i}] id=${display.id} bounds=${display.bounds.x},${display.bounds.y} ` +
-          `${display.bounds.width}x${display.bounds.height} ← source "${source.name}" ` +
+          `${display.bounds.width}x${display.bounds.height} <- source "${source.name}" ` +
           `(display_id=${source.display_id || "<none>"}, matchedById=${!!matchedById})`
       );
       const full = source.thumbnail;
