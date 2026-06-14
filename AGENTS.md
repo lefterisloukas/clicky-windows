@@ -143,7 +143,9 @@ seem to have no effect. Either re-run `tsc` manually or run
 `npx tsc --watch` in a second terminal.
 
 Overlay debugging:
-- In dev, overlay DevTools auto-open detached on load.
+- Overlay DevTools don't auto-open (one detached window per monitor is too
+  noisy). Open them manually, or call `win.webContents.openDevTools({ mode:
+  "detach" })` in `createOverlayWindow` when you need them.
 - Overlay renderer `console.*` messages are forwarded to the main process
   console via a `console-message` listener, so you can see them in the
   terminal you launched `npm run dev` from.

@@ -202,14 +202,6 @@ function createOverlayWindow(display: Electron.Display, displayIndex: number): B
     console.log(`[overlay${displayIndex}:${level}] ${message} (line ${line})`);
   });
 
-  // Open DevTools only for the primary display in dev mode — opening one
-  // detached DevTools window per monitor is too noisy.
-  if (!app.isPackaged && displayIndex === 0) {
-    win.webContents.once("did-finish-load", () => {
-      win.webContents.openDevTools({ mode: "detach" });
-    });
-  }
-
   // Windows clamps a frameless, non-maximized window to the display's WORK
   // AREA at creation time — i.e. it shaves off the taskbar height. On a 4K
   // monitor at 175% scaling that leaves the overlay ~47px short at the bottom,
