@@ -9,7 +9,7 @@ When enabled, HIPAA mode enforces **local-only processing** for voice and speech
 | Feature | Normal Mode | HIPAA Mode |
 |---------|-------------|------------|
 | Transcription | AssemblyAI or OpenAI (cloud) | Whisper Local only |
-| Text-to-Speech | ElevenLabs (cloud) | Windows SAPI only |
+| Text-to-Speech | ElevenLabs / OpenAI (cloud) | Local only — Kokoro or Windows SAPI |
 | Claude API | Cloud (Anthropic) | Cloud (Anthropic) |
 | Analytics | None | None |
 

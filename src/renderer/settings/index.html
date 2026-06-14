@@ -87,7 +87,16 @@
     }
 
     select { cursor: pointer; }
-    select option { background: #1a1a2e; }
+    select option { background: #1a1a2e; color: var(--text-primary); }
+    /* Group headers (e.g. "American · Female") — give them an explicit
+       readable color + slightly darker header background. Without this the
+       browser default renders dark label text on the dark field. */
+    select optgroup {
+      background: #12121e;
+      color: #cfcfe0;
+      font-weight: 600;
+      font-style: normal;
+    }
 
     .toggle-row {
       display: flex;
@@ -328,10 +337,70 @@
     <label>Default Voice</label>
     <select id="defaultVoice">
       <option value="off">Off (text only)</option>
+      <option value="kokoro">Kokoro (offline, natural)</option>
       <option value="local">Windows Voice (offline, free)</option>
       <option value="openai">OpenAI Voice (cloud, natural)</option>
       <option value="elevenlabs">ElevenLabs Voice (cloud, premium)</option>
     </select>
+  </div>
+
+  <div id="kokoroGroup" style="display:none">
+    <div class="field">
+      <label>Kokoro Voice</label>
+      <select id="kokoroVoice">
+        <optgroup label="American · Female">
+          <option value="af_heart">Heart (recommended)</option>
+          <option value="af_alloy">Alloy</option>
+          <option value="af_aoede">Aoede</option>
+          <option value="af_bella">Bella</option>
+          <option value="af_jessica">Jessica</option>
+          <option value="af_kore">Kore</option>
+          <option value="af_nicole">Nicole</option>
+          <option value="af_nova">Nova</option>
+          <option value="af_river">River</option>
+          <option value="af_sarah">Sarah</option>
+          <option value="af_sky">Sky</option>
+        </optgroup>
+        <optgroup label="American · Male">
+          <option value="am_adam">Adam</option>
+          <option value="am_echo">Echo</option>
+          <option value="am_eric">Eric</option>
+          <option value="am_fenrir">Fenrir</option>
+          <option value="am_liam">Liam</option>
+          <option value="am_michael">Michael</option>
+          <option value="am_onyx">Onyx</option>
+          <option value="am_puck">Puck</option>
+          <option value="am_santa">Santa</option>
+        </optgroup>
+        <optgroup label="British · Female">
+          <option value="bf_alice">Alice</option>
+          <option value="bf_emma">Emma</option>
+          <option value="bf_isabella">Isabella</option>
+          <option value="bf_lily">Lily</option>
+        </optgroup>
+        <optgroup label="British · Male">
+          <option value="bm_daniel">Daniel</option>
+          <option value="bm_fable">Fable</option>
+          <option value="bm_george">George</option>
+          <option value="bm_lewis">Lewis</option>
+        </optgroup>
+      </select>
+      <div class="hint">Runs fully on your machine — no API key, nothing leaves the device.</div>
+    </div>
+
+    <div class="field">
+      <label>Speed <span id="kokoroSpeedValue">1.0×</span></label>
+      <input type="range" id="kokoroSpeed" min="0.5" max="2" step="0.1" value="1">
+    </div>
+
+    <div class="field">
+      <label>Quality</label>
+      <select id="kokoroQuality">
+        <option value="fast">Fast (recommended — lower latency)</option>
+        <option value="best">Best (higher quality, slower on CPU)</option>
+      </select>
+      <div class="hint">Fast starts speaking almost instantly; Best is slightly cleaner but can take a few seconds before the first word on CPU.</div>
+    </div>
   </div>
 
   <div class="section-label">AI Provider</div>
@@ -459,6 +528,7 @@
       'aiProvider', 'claudeModel', 'openaiModel', 'openrouterModel',
       'geminiBaseUrl', 'geminiModel', 'geminiReasoning', 'geminiTemperature',
       'groqBaseUrl', 'groqSttModel',
+      'kokoroVoice', 'kokoroSpeed', 'kokoroQuality',
       'alwaysOnTop', 'cursorBuddyEnabled', 'hipaaMode'
     ];
 
@@ -577,6 +647,8 @@
       );
       updateProviderUI();
       updateSttProviderUI();
+      updateTtsUI();
+      updateKokoroSpeedLabel();
       updateStatus(settings);
 
       // Auto-refresh the model list on settings open if the cache is
@@ -612,11 +684,31 @@
     document.getElementById('transcriptionProvider').addEventListener('change', updateSttProviderUI);
     updateSttProviderUI();
 
+    function updateTtsUI() {
+      const voice = document.getElementById('defaultVoice').value;
+      document.getElementById('kokoroGroup').style.display = voice === 'kokoro' ? '' : 'none';
+    }
+    function updateKokoroSpeedLabel() {
+      const v = parseFloat(document.getElementById('kokoroSpeed').value || '1');
+      document.getElementById('kokoroSpeedValue').textContent = v.toFixed(1) + '×';
+    }
+    document.getElementById('defaultVoice').addEventListener('change', updateTtsUI);
+    document.getElementById('kokoroSpeed').addEventListener('input', updateKokoroSpeedLabel);
+    updateTtsUI();
+    updateKokoroSpeedLabel();
+
     document.getElementById('hipaaMode').addEventListener('change', (e) => {
       if (e.target.checked) {
         document.getElementById('transcriptionProvider').value = 'whisper-local';
-        document.getElementById('ttsProvider').value = 'local';
+        // Force a fully-local voice so nothing leaves the machine. Kokoro and
+        // Windows SAPI both qualify; keep the user's choice if it's already
+        // one of them, otherwise fall back to the offline Windows voice.
+        const voiceEl = document.getElementById('defaultVoice');
+        if (voiceEl.value !== 'kokoro' && voiceEl.value !== 'local') {
+          voiceEl.value = 'local';
+        }
         updateSttProviderUI();
+        updateTtsUI();
       }
     });
 

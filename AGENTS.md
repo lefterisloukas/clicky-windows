@@ -34,7 +34,7 @@ src/
 │   ├── openrouter-chat.ts # OpenRouter (routes to various models)
 │   ├── gemini-chat.ts     # Google Gemini (@google/genai SDK, vision)
 │   ├── transcription/     # Groq / AssemblyAI / OpenAI Whisper / whisper.cpp local
-│   └── tts/               # ElevenLabs / OpenAI TTS / Windows SAPI
+│   └── tts/               # ElevenLabs / OpenAI TTS / Kokoro (local) / Windows SAPI
 ├── preload/               # contextBridge between main and renderer
 └── renderer/              # HTML/CSS/JS for each window
     ├── chat/              # Chat window (text + push-to-talk mic)
@@ -165,12 +165,22 @@ Both are gitignored and must be downloaded separately. See
 filename is currently hard-coded to `ggml-base.bin` in
 `src/services/transcription/whisper-local.ts`.
 
+The local **Kokoro** TTS model is similar: `KokoroTTS`
+(`src/services/tts/kokoro.ts`) loads `resources/kokoro/` (config +
+`onnx/model_quantized.onnx`, the q8 variant). It's gitignored and downloaded
+separately, but is **bundled into packaged builds** via `extraResource` in
+`forge.config.ts` (lands at `process.resourcesPath/kokoro`). Loading is forced
+fully-offline (`@huggingface/transformers` `env.allowRemoteModels = false`); the
+voices ship inside the `kokoro-js` package, so they need no bundling. The model
+loads once into a module-level singleton — never reconstruct it per `speak()`.
+
 ## Security notes
 
 - API keys (Anthropic, OpenAI, ElevenLabs, AssemblyAI) live in
   `%APPDATA%/clicky-windows/settings.json` in plain text. Acceptable for a
   local personal tool; not appropriate for distributed binaries without
   encryption.
-- `whisper-local` + local TTS + optional proxy means no audio or response
-  text ever leaves the machine (see `docs/hipaa-mode.md`).
+- `whisper-local` + local TTS (Windows SAPI or **Kokoro**) + optional proxy
+  means no audio or response text ever leaves the machine (see
+  `docs/hipaa-mode.md`).
 - See `SECURITY.md` for the project's disclosure policy.

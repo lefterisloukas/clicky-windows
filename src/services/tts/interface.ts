@@ -29,6 +29,14 @@ export function createTTSProvider(settings: SettingsStore): TTSProvider {
       const { LocalTTS } = require("./local");
       return new LocalTTS();
     }
+    case "kokoro": {
+      const { KokoroTTS } = require("./kokoro");
+      return new KokoroTTS(
+        settings.get("kokoroVoice"),
+        Number(settings.get("kokoroSpeed")) || 1.0,
+        settings.get("kokoroQuality")
+      );
+    }
     default:
       throw new Error(`Unknown TTS provider: ${provider}`);
   }

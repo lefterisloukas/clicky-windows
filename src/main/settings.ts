@@ -24,9 +24,12 @@ interface SettingsSchema {
 
   // TTS
   ttsEnabled: boolean;
-  ttsProvider: "elevenlabs" | "openai" | "local";
+  ttsProvider: "elevenlabs" | "openai" | "local" | "kokoro";
   elevenlabsVoiceId: string;
   openaiTtsVoice: string;
+  kokoroVoice: string;
+  kokoroSpeed: number;
+  kokoroQuality: "fast" | "best";
 
   // Hotkey
   pushToTalkHotkey: string;
@@ -72,6 +75,9 @@ const defaults: SettingsSchema = {
   ttsProvider: "local",
   elevenlabsVoiceId: "kPzsL2i3teMYv0FxEYQ6",
   openaiTtsVoice: "alloy",
+  kokoroVoice: "af_heart",
+  kokoroSpeed: 1.0,
+  kokoroQuality: "fast",
   pushToTalkHotkey: "Ctrl+Shift",
   alwaysOnTop: false,
   cursorBuddyEnabled: true,
