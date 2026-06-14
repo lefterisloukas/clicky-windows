@@ -10,11 +10,33 @@ Voice input lets you ask questions by speaking instead of typing. Hold the push-
 
 | Provider | Quality | Latency | Privacy | Key Required |
 |----------|---------|---------|---------|-------------|
+| **Groq Whisper** (default) | Excellent | Low (batch, very fast) | Cloud — audio sent to Groq | Yes |
 | **AssemblyAI** | Excellent | Low (real-time streaming) | Cloud — audio sent to AssemblyAI | Yes |
 | **OpenAI Whisper API** | Excellent | Medium (batch) | Cloud — audio sent to OpenAI | Yes |
 | **Whisper Local** | Good | Higher (depends on hardware) | Private — nothing leaves your device | No |
 
-### Setting Up AssemblyAI (Recommended)
+### Setting Up Groq Whisper (Default)
+
+Groq runs OpenAI's Whisper models on custom LPU hardware — transcription is
+typically faster than OpenAI's own endpoint, and Groq's free tier is generous.
+
+1. Sign up at [console.groq.com](https://console.groq.com/)
+2. Open **API Keys** in the sidebar and create a new key
+3. In Clicky, open Settings (tray > Settings)
+4. Paste the key in the **Groq API Key** field
+5. Set **Transcription Provider** to "Groq Whisper (cloud, default)"
+6. (Optional) Click **Test API Key** to verify the key and refresh the
+   model list — the dropdown is auto-populated from Groq's `/models`
+   endpoint and re-checks every 5 days
+7. (Optional) Override the **Groq Base URL** if you're routing through a
+   gateway or proxy — defaults to `https://api.groq.com/openai/v1`
+8. Save
+
+The current model is `whisper-large-v3-turbo` (Whisper Large V3 Turbo,
+multilingual). Newer STT models Groq adds to the catalog will appear in
+the dropdown automatically after a Test.
+
+### Setting Up AssemblyAI
 
 1. Sign up at [assemblyai.com](https://www.assemblyai.com/)
 2. Copy your API key from the dashboard

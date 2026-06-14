@@ -12,7 +12,7 @@ Windows companion to [farzaa/clicky](https://github.com/farzaa/clicky) (macOS).
 - **Points at things** — animated cursor overlay that highlights UI elements Claude references
 - **Cursor buddy** — persistent blue glowing dot that follows your mouse (toggleable)
 - **Always on top** — optional pinned chat window that stays visible over other apps
-- **Multi-provider** — supports Anthropic, OpenAI, and OpenRouter (300+ models)
+- **Multi-provider** — supports Anthropic, OpenAI, OpenRouter (300+ models), and Google Gemini
 - **HIPAA mode** — force all processing local (transcription + TTS) except the LLM call
 - **Lives in your tray** — runs quietly as a system tray app
 
@@ -51,7 +51,8 @@ The installer will be in `out/make/squirrel.windows/x64/Clicky-Setup.exe`.
 2. Open **Settings** from the system tray icon
 3. Enter your API key(s):
    - **Required:** [Anthropic API key](https://console.anthropic.com/) (or use OpenRouter/OpenAI)
-   - **Optional:** [AssemblyAI](https://www.assemblyai.com/) for voice transcription
+   - **Optional:** [Groq](https://console.groq.com/) for voice transcription (default STT provider)
+   - **Optional:** [AssemblyAI](https://www.assemblyai.com/) for real-time voice transcription
    - **Optional:** [ElevenLabs](https://elevenlabs.io/) for premium TTS
 
 ## Features
@@ -59,7 +60,8 @@ The installer will be in `out/make/squirrel.windows/x64/Clicky-Setup.exe`.
 ### Voice Input
 
 Hold the push-to-talk hotkey (default: `Ctrl+Shift+Space`) to record, release to send. Transcription providers:
-- **AssemblyAI** — cloud, high accuracy
+- **Groq Whisper** — cloud, very fast, free tier, default
+- **AssemblyAI** — cloud, real-time streaming, high accuracy
 - **OpenAI Whisper** — cloud, fast
 - **Whisper Local** — offline, private (uses whisper.cpp)
 
@@ -100,7 +102,8 @@ src/
 │   ├── claude.ts       # Anthropic Claude API (vision + chat)
 │   ├── openai-chat.ts  # OpenAI GPT API
 │   ├── openrouter-chat.ts  # OpenRouter API (300+ models)
-│   ├── transcription/  # Pluggable: AssemblyAI, OpenAI, local Whisper
+│   ├── gemini-chat.ts  # Google Gemini API (@google/genai, vision + chat)
+│   ├── transcription/  # Pluggable: Groq (default), AssemblyAI, OpenAI, local Whisper
 │   └── tts/            # Pluggable: ElevenLabs, OpenAI, Windows SAPI
 ├── preload/        # Context bridge for renderer
 └── renderer/       # UI

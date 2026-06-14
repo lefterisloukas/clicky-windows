@@ -17,6 +17,8 @@ export interface TranscriptionProvider {
   onFinalTranscript(callback: (text: string) => void): void;
 }
 
+/* eslint-disable @typescript-eslint/no-require-imports --
+   Lazy-load each provider so unused ones don't get bundled in. */
 export function createTranscriptionProvider(
   settings: SettingsStore
 ): TranscriptionProvider {
@@ -24,13 +26,20 @@ export function createTranscriptionProvider(
 
   switch (provider) {
     case "assemblyai":
-      // Dynamic import to avoid loading unused providers
       const { AssemblyAIProvider } = require("./assemblyai");
       return new AssemblyAIProvider(settings.get("assemblyaiApiKey"));
 
     case "openai":
       const { OpenAITranscriptionProvider } = require("./openai");
       return new OpenAITranscriptionProvider(settings.get("openaiApiKey"));
+
+    case "groq":
+      const { GroqTranscriptionProvider } = require("./groq");
+      return new GroqTranscriptionProvider(
+        settings.get("groqApiKey"),
+        settings.get("groqBaseUrl"),
+        settings.get("groqSttModel")
+      );
 
     case "whisper-local":
       const { WhisperLocalProvider } = require("./whisper-local");

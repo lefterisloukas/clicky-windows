@@ -4,6 +4,7 @@ import { SettingsStore } from "./settings";
 import { ClaudeService } from "../services/claude";
 import { OpenAIChatService } from "../services/openai-chat";
 import { OpenRouterChatService } from "../services/openrouter-chat";
+import { GeminiChatService } from "../services/gemini-chat";
 import {
   TranscriptionProvider,
   createTranscriptionProvider,
@@ -52,6 +53,9 @@ export class CompanionManager {
     }
     if (provider === "openrouter") {
       return new OpenRouterChatService(this.settings);
+    }
+    if (provider === "gemini") {
+      return new GeminiChatService(this.settings);
     }
     return new ClaudeService(this.settings);
   }
@@ -149,12 +153,25 @@ export class CompanionManager {
     const pointTags = refinedTags.map((tag) => {
       const shot = screenshots[tag.screen] || screenshots[0];
       if (!shot) return tag;
+      // Models routinely overshoot the image bounds by a few px (e.g. a
+      // "Next" button near the bottom comes back as y=905 on an 882-tall
+      // image). Left unchecked, the overshoot scales up and the cursor flies
+      // off the bottom/right edge and is never seen. Clamp to the last valid
+      // pixel so an overshoot snaps to the visible edge instead.
+      const clampedImgX = Math.max(0, Math.min(shot.imageDimensions.width - 1, tag.x));
+      const clampedImgY = Math.max(0, Math.min(shot.imageDimensions.height - 1, tag.y));
+      if (clampedImgX !== tag.x || clampedImgY !== tag.y) {
+        console.log(
+          `[Clicky] Clamped "${tag.label}" (${tag.x},${tag.y}) → (${clampedImgX},${clampedImgY}) ` +
+            `to image bounds ${shot.imageDimensions.width}x${shot.imageDimensions.height}`
+        );
+      }
       const scaleX = shot.bounds.width / shot.imageDimensions.width;
       const scaleY = shot.bounds.height / shot.imageDimensions.height;
       return {
         ...tag,
-        x: Math.round(tag.x * scaleX),
-        y: Math.round(tag.y * scaleY),
+        x: Math.round(clampedImgX * scaleX),
+        y: Math.round(clampedImgY * scaleY),
       };
     });
     console.log("[Clicky] Final POINT tags:", JSON.stringify(pointTags));
@@ -162,20 +179,38 @@ export class CompanionManager {
     if (pointTags.length > 0 && this.overlayWindows.length > 0) {
       // Route each tag to the overlay for its target display. Coordinates
       // are already in that display's local CSS space (0..bounds.width).
-      const byScreen = new Map<number, typeof pointTags>();
+      //
+      // CRITICAL: `tag.screen` is the position of the screenshot in the array
+      // the model saw (screen0, screen1, ...). The overlay windows are indexed
+      // by `screen.getAllDisplays()` order. Those two indices are identical
+      // ONLY when no display was skipped during capture. If a display's capture
+      // came back empty it is dropped from `screenshots`, shifting every later
+      // array position — so we must map back through the screenshot's true
+      // `displayIndex` to pick the right overlay, never `tag.screen` directly.
+      const byOverlay = new Map<number, typeof pointTags>();
       for (const tag of pointTags) {
-        const list = byScreen.get(tag.screen) || [];
-        list.push(tag);
-        byScreen.set(tag.screen, list);
-      }
-      for (const [screenIdx, tags] of byScreen) {
-        if (screenIdx < 0 || screenIdx >= this.overlayWindows.length) {
-          console.warn(
-            `[Clicky] POINT tag screen=${screenIdx} is out of range (have ${this.overlayWindows.length} overlay windows); routing to primary display.`
+        const shot = screenshots[tag.screen] || screenshots[0];
+        const overlayIdx = shot ? shot.displayIndex : tag.screen;
+        if (overlayIdx !== tag.screen) {
+          console.log(
+            `[Clicky] POINT screen${tag.screen} (array pos) → displayIndex ${overlayIdx} (a display was skipped during capture)`
           );
         }
-        const win = this.overlayWindows[screenIdx] || this.overlayWindows[0];
+        const list = byOverlay.get(overlayIdx) || [];
+        list.push(tag);
+        byOverlay.set(overlayIdx, list);
+      }
+      for (const [overlayIdx, tags] of byOverlay) {
+        if (overlayIdx < 0 || overlayIdx >= this.overlayWindows.length) {
+          console.warn(
+            `[Clicky] POINT target overlay=${overlayIdx} is out of range (have ${this.overlayWindows.length} overlay windows); routing to primary display.`
+          );
+        }
+        const win = this.overlayWindows[overlayIdx] || this.overlayWindows[0];
         if (win && !win.isDestroyed()) {
+          console.log(
+            `[Clicky] → routing ${tags.length} point(s) to overlay ${overlayIdx} @ ${JSON.stringify(win.getBounds())}`
+          );
           win.webContents.send("overlay:point", tags);
         }
       }
@@ -185,7 +220,6 @@ export class CompanionManager {
     //    Re-read settings each time so chat toggle changes take effect immediately
     const spokenText = response.text.replace(/\[POINT:[^\]]+\]/g, "").trim();
     const ttsOn = this.settings.get("ttsEnabled");
-    const ttsProv = this.settings.get("ttsProvider");
     if (ttsOn && spokenText) {
       this.broadcastStage("speaking", "Speaking...");
       try {

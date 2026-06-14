@@ -17,7 +17,9 @@ const SYSTEM_PROMPT = `You are Clicky, a helpful AI screen companion. You can se
 When you want to point at something on the user's screen, embed a coordinate tag in your response like this:
 [POINT:x,y:label:screenN]
 
-Where x,y are pixel coordinates on the screen, label is a short description, and N is the screen/display index (0-based).
+- x,y are IMAGE pixel coordinates within the screenshot you see — use the image dimensions given for each screen, NOT the actual monitor resolution. The system scales them to real pixels for you.
+- label is a short (2-5 word) description.
+- screenN is the screen index. Each image is preceded by a "=== screenN ===" label; that label is the index. With multiple monitors, NEVER guess the index from image order or size — read the label directly above the image that contains the element, and match screenN to it. Putting the right coordinates on the wrong screenN points at the wrong monitor.
 
 Be concise and helpful. You're having a real-time conversation — keep responses short and actionable.`;
 
@@ -37,26 +39,34 @@ export class OpenRouterChatService {
     const model = this.settings.get("openrouterModel");
 
     // Build user message content with images (OpenAI vision format)
+    // Interleave a label text block before each image so the model binds each
+    // screenshot to its screenN index directly (image order alone is
+    // unreliable when monitors share a resolution).
     const userContent: Array<Record<string, unknown>> = [];
-
-    for (const screenshot of params.screenshots) {
-      userContent.push({
-        type: "image_url",
-        image_url: {
-          url: `data:image/jpeg;base64,${screenshot.data}`,
-        },
-      });
-    }
 
     userContent.push({
       type: "text",
       text: [
         `User says: "${params.transcript}"`,
         `Cursor position: (${params.cursorPosition.x}, ${params.cursorPosition.y})`,
-        `Screens: ${params.screenshots.map((s, i) =>
-          `screen${i} ${s.bounds.width}x${s.bounds.height} at (${s.bounds.x},${s.bounds.y})`
-        ).join(", ")}`,
+        `You are given ${params.screenshots.length} screen image(s) below, each preceded by its screenN label. Use IMAGE pixel coordinates.`,
       ].join("\n"),
+    });
+
+    params.screenshots.forEach((s, i) => {
+      userContent.push({
+        type: "text",
+        text:
+          `=== screen${i} === image is ${s.imageDimensions.width}x${s.imageDimensions.height} px ` +
+          `(physical display ${s.bounds.width}x${s.bounds.height} at ${s.bounds.x},${s.bounds.y}). ` +
+          `The next image IS screen${i}; any element in it MUST use screen${i}.`,
+      });
+      userContent.push({
+        type: "image_url",
+        image_url: {
+          url: `data:image/jpeg;base64,${s.data}`,
+        },
+      });
     });
 
     const messages: Array<Record<string, unknown>> = [

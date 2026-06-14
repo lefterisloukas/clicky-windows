@@ -27,7 +27,7 @@ Your Machine                          Cloud APIs
 
 | Data | Where it goes | Stored locally? |
 |------|--------------|-----------------|
-| Screenshots | AI provider (Anthropic/OpenAI/OpenRouter) | No — in-memory only |
+| Screenshots | AI provider (Anthropic/OpenAI/OpenRouter/Google Gemini) | No — in-memory only |
 | Audio recordings | OpenAI Whisper API | No — temp file deleted after transcription |
 | Transcripts | AI provider | No — in-memory, cleared on app close |
 | AI responses | Displayed in chat | No — in-memory, cleared on app close |

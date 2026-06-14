@@ -58,6 +58,25 @@ contextBridge.exposeInMainWorld("clicky", {
   setSetting: (key: string, value: unknown) =>
     ipcRenderer.invoke("settings:set", key, value),
 
+  // Groq: verify API key + refresh the cached Whisper model list
+  testGroqKey: (
+    apiKey: string,
+    baseUrl?: string
+  ): Promise<{ ok: boolean; error?: string; models?: string[] }> =>
+    ipcRenderer.invoke("settings:testGroqKey", apiKey, baseUrl),
+  refreshGroqModelList: (
+    apiKey: string,
+    baseUrl?: string
+  ): Promise<{ ok: boolean; error?: string; models?: string[] }> =>
+    ipcRenderer.invoke("settings:refreshGroqModelList", apiKey, baseUrl),
+
+  // Gemini: verify API key + refresh the cached chat model list
+  testGeminiKey: (
+    apiKey: string,
+    baseUrl?: string
+  ): Promise<{ ok: boolean; error?: string; models?: string[] }> =>
+    ipcRenderer.invoke("settings:testGeminiKey", apiKey, baseUrl),
+
   // Chat — send a text query (captures screen + sends to Claude)
   sendQuery: (text: string): Promise<string> =>
     ipcRenderer.invoke("chat:query", text),

@@ -8,8 +8,8 @@
     "build": "tsc && electron-forge make",
     "package": "electron-forge package",
     "make": "electron-forge make",
-    "lint": "eslint src/ --ext .ts,.tsx",
-    "lint:fix": "eslint src/ --ext .ts,.tsx --fix",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
     "typecheck": "tsc --noEmit"
   },
   "repository": {
@@ -39,6 +39,7 @@
     "typescript": "^5.7.0"
   },
   "dependencies": {
+    "@google/genai": "^2.8.0",
     "@types/ws": "^8.18.1",
     "electron-updater": "^6.3.0",
     "ws": "^8.20.0"

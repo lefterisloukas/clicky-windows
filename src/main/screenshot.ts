@@ -60,6 +60,27 @@ export class ScreenCapture {
     // expect id-based matching to succeed.
     const anyHasDisplayId = sources.some((s) => s.display_id);
 
+    // One-time diagnostic dump of how displays and capturer sources line up.
+    // This is the single most useful thing to read when points land on the
+    // wrong monitor — it shows whether id-based matching succeeded or whether
+    // we silently fell back to positional order (which can swap left/right).
+    console.log(
+      "[screenshot] displays:",
+      JSON.stringify(
+        displays.map((d, i) => ({
+          i,
+          id: String(d.id),
+          bounds: d.bounds,
+          scaleFactor: d.scaleFactor,
+          primary: d.id === screen.getPrimaryDisplay().id,
+        }))
+      )
+    );
+    console.log(
+      "[screenshot] capturer sources:",
+      JSON.stringify(sources.map((s, i) => ({ i, name: s.name, display_id: s.display_id })))
+    );
+
     for (let i = 0; i < displays.length; i++) {
       const display = displays[i];
       const matchedById = sources.find(
@@ -72,9 +93,21 @@ export class ScreenCapture {
       }
       const source = matchedById || sources[i] || sources[0];
       if (!source) continue;
+      console.log(
+        `[screenshot] display[${i}] id=${display.id} bounds=${display.bounds.x},${display.bounds.y} ` +
+          `${display.bounds.width}x${display.bounds.height} ← source "${source.name}" ` +
+          `(display_id=${source.display_id || "<none>"}, matchedById=${!!matchedById})`
+      );
       const full = source.thumbnail;
 
-      if (full.isEmpty()) continue;
+      if (full.isEmpty()) {
+        console.warn(
+          `[screenshot] display[${i}] id=${display.id} produced an EMPTY thumbnail; ` +
+            `skipping it. Later screens shift by one array position (overlay routing ` +
+            `compensates via displayIndex).`
+        );
+        continue;
+      }
 
       // Build a downsampled copy for pass-1 AI input.
       const fullSize = full.getSize();

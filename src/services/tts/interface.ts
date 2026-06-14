@@ -5,6 +5,8 @@ export interface TTSProvider {
   stop(): void;
 }
 
+/* eslint-disable @typescript-eslint/no-require-imports --
+   Lazy-load each provider so unused ones don't get bundled in. */
 export function createTTSProvider(settings: SettingsStore): TTSProvider {
   const provider = settings.get("ttsProvider");
 

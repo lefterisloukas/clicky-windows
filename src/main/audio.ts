@@ -70,7 +70,6 @@ export class AudioCapture {
     }
 
     const provider = this.settings.get("transcriptionProvider");
-    const openaiKey = this.settings.get("openaiApiKey");
 
     // Local Whisper via whisper.cpp — no audio leaves the device.
     if (provider === "whisper-local") {
@@ -80,18 +79,42 @@ export class AudioCapture {
       return local.stop();
     }
 
-    // Default to OpenAI Whisper API for batch transcription.
-    if ((provider === "openai" || provider === "assemblyai") && openaiKey) {
-      return this.transcribeWhisper(pcmBuffer, openaiKey);
+    // Groq Whisper — OpenAI-compatible endpoint, configurable base URL/model.
+    if (provider === "groq") {
+      const groqKey = this.settings.get("groqApiKey");
+      if (!groqKey) {
+        throw new Error(
+          "Groq is selected as the transcription provider but no Groq API key is set. Add one in Settings."
+        );
+      }
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy-load
+      const { GroqTranscriptionProvider } = require("../services/transcription/groq");
+      const groq = new GroqTranscriptionProvider(
+        groqKey,
+        this.settings.get("groqBaseUrl"),
+        this.settings.get("groqSttModel")
+      );
+      await groq.start();
+      groq.sendAudio(pcmBuffer);
+      return groq.stop();
     }
 
-    // Fallback: if they have an OpenAI key, use Whisper regardless of setting.
+    // OpenAI / AssemblyAI both fall through to the OpenAI Whisper API.
+    if (provider === "openai" || provider === "assemblyai") {
+      const openaiKey = this.settings.get("openaiApiKey");
+      if (openaiKey) {
+        return this.transcribeWhisper(pcmBuffer, openaiKey);
+      }
+    }
+
+    // Last-resort fallback: if an OpenAI key is present, use it regardless of setting.
+    const openaiKey = this.settings.get("openaiApiKey");
     if (openaiKey) {
       return this.transcribeWhisper(pcmBuffer, openaiKey);
     }
 
     throw new Error(
-      "No transcription provider configured. Set transcriptionProvider to 'whisper-local' or add an OpenAI API key."
+      "No transcription provider configured. Add an API key for the selected provider in Settings, or switch to 'whisper-local'."
     );
   }
 

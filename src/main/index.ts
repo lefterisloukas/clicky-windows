@@ -14,6 +14,109 @@ const settings = new SettingsStore();
 let companion: CompanionManager;
 let cursorBuddyInterval: ReturnType<typeof setInterval> | null = null;
 
+const GROQ_DEFAULT_BASE_URL = "https://api.groq.com/openai/v1";
+const GROQ_DEFAULT_STT_MODEL = "whisper-large-v3-turbo";
+
+const GEMINI_DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com";
+const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash";
+
+/**
+ * Hit Gemini's REST list-models endpoint and return the models that support
+ * generateContent (i.e. usable for chat/vision). Dedupes and pins the default
+ * model first. Mirrors fetchGroqModels.
+ */
+async function fetchGeminiModels(
+  apiKey: string,
+  baseUrl?: string
+): Promise<{ ok: boolean; error?: string; models?: string[] }> {
+  if (!apiKey) {
+    return { ok: false, error: "Gemini API key is empty" };
+  }
+  const root = (baseUrl || GEMINI_DEFAULT_BASE_URL).replace(/\/+$/, "");
+  const url = `${root}/v1beta/models?key=${encodeURIComponent(apiKey)}`;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      const body = await response.text();
+      return {
+        ok: false,
+        error: `Gemini API returned ${response.status}: ${body.slice(0, 200)}`,
+      };
+    }
+    const data = (await response.json()) as {
+      models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
+    };
+    const chatModels = (data.models || [])
+      .filter((m) =>
+        (m.supportedGenerationMethods || []).includes("generateContent")
+      )
+      .map((m) => (m.name || "").replace(/^models\//, ""))
+      .filter((id) => id.includes("gemini"));
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    ordered.push(GEMINI_DEFAULT_MODEL);
+    seen.add(GEMINI_DEFAULT_MODEL);
+    for (const id of chatModels) {
+      if (!seen.has(id)) {
+        ordered.push(id);
+        seen.add(id);
+      }
+    }
+    return { ok: true, models: ordered };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `Could not reach Gemini: ${msg}` };
+  }
+}
+
+/**
+ * Hit Groq's OpenAI-compatible GET /models endpoint and return the STT
+ * (Whisper-family) models. Dedupes and pins whisper-large-v3-turbo first.
+ */
+async function fetchGroqModels(
+  apiKey: string,
+  baseUrl?: string
+): Promise<{ ok: boolean; error?: string; models?: string[] }> {
+  if (!apiKey) {
+    return { ok: false, error: "Groq API key is empty" };
+  }
+  const url = `${(baseUrl || GROQ_DEFAULT_BASE_URL).replace(/\/+$/, "")}/models`;
+  try {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      return {
+        ok: false,
+        error: `Groq API returned ${response.status}: ${body.slice(0, 200)}`,
+      };
+    }
+    const data = (await response.json()) as {
+      data?: Array<{ id?: string }>;
+    };
+    const whisperModels = (data.data || [])
+      .map((m) => m.id)
+      .filter((id): id is string => typeof id === "string" && id.includes("whisper"));
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    if (!seen.has(GROQ_DEFAULT_STT_MODEL)) {
+      ordered.push(GROQ_DEFAULT_STT_MODEL);
+      seen.add(GROQ_DEFAULT_STT_MODEL);
+    }
+    for (const id of whisperModels) {
+      if (!seen.has(id)) {
+        ordered.push(id);
+        seen.add(id);
+      }
+    }
+    return { ok: true, models: ordered };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `Could not reach Groq: ${msg}` };
+  }
+}
+
 function startCursorBuddy(): void {
   if (cursorBuddyInterval) return;
   cursorBuddyInterval = setInterval(() => {
@@ -107,11 +210,33 @@ function createOverlayWindow(display: Electron.Display, displayIndex: number): B
     });
   }
 
+  // Windows clamps a frameless, non-maximized window to the display's WORK
+  // AREA at creation time — i.e. it shaves off the taskbar height. On a 4K
+  // monitor at 175% scaling that leaves the overlay ~47px short at the bottom,
+  // so points near the bottom edge (and the taskbar itself) are never covered.
+  // Re-assert the full display bounds AFTER the window is at screen-saver
+  // level, when Windows allows covering the taskbar. Verify and log the result.
+  const enforceFullBounds = (phase: string) => {
+    win.setAlwaysOnTop(true, "screen-saver");
+    win.setBounds({ x, y, width, height });
+    const got = win.getBounds();
+    const full = got.width >= width && got.height >= height;
+    console.log(
+      `[Clicky] Overlay ${displayIndex} ${phase}: bounds=${JSON.stringify(got)} ` +
+        `want=${width}x${height} fullCoverage=${full} isVisible=${win.isVisible()}`
+    );
+    if (!full) {
+      console.warn(
+        `[Clicky] Overlay ${displayIndex} is smaller than its display ` +
+          `(${got.width}x${got.height} < ${width}x${height}); bottom/right edge points may be hidden.`
+      );
+    }
+  };
+
   // Show after load is ready (transparent + show:false avoids a black flash on Windows)
   win.once("ready-to-show", () => {
     win.showInactive();
-    win.setAlwaysOnTop(true, "screen-saver");
-    console.log(`[Clicky] Overlay ${displayIndex} shown:`, win.getBounds(), "isVisible:", win.isVisible());
+    enforceFullBounds("shown");
   });
 
   // Fallback: if ready-to-show never fires (transparent windows can be tricky),
@@ -119,9 +244,8 @@ function createOverlayWindow(display: Electron.Display, displayIndex: number): B
   win.webContents.once("did-finish-load", () => {
     if (!win.isVisible()) {
       win.showInactive();
-      win.setAlwaysOnTop(true, "screen-saver");
-      console.log(`[Clicky] Overlay ${displayIndex} forced-shown after did-finish-load:`, win.getBounds());
     }
+    enforceFullBounds("did-finish-load");
   });
 
   return win;
@@ -208,6 +332,48 @@ function setupIPC(): void {
     }
   });
 
+  // Verify a Groq API key by hitting GET /models. On success, refresh the
+  // cached model list (deduped, whisper-large-v3-turbo pinned first).
+  ipcMain.handle(
+    "settings:testGroqKey",
+    async (_event, apiKey: string, baseUrl?: string) => {
+      const result = await fetchGroqModels(apiKey, baseUrl);
+      if (result.ok && result.models) {
+        settings.set("groqSttModelList", result.models);
+        settings.set("groqSttModelListFetchedAt", Date.now());
+      }
+      return result;
+    }
+  );
+
+  // Force a refresh of the cached Groq model list (used by auto-refresh on
+  // settings panel open, when the cache is older than 5 days).
+  ipcMain.handle(
+    "settings:refreshGroqModelList",
+    async (_event, apiKey: string, baseUrl?: string) => {
+      const result = await fetchGroqModels(apiKey, baseUrl);
+      if (result.ok && result.models) {
+        settings.set("groqSttModelList", result.models);
+        settings.set("groqSttModelListFetchedAt", Date.now());
+      }
+      return result;
+    }
+  );
+
+  // Verify a Gemini API key by hitting the list-models endpoint. On success,
+  // refresh the cached model list (deduped, default model pinned first).
+  ipcMain.handle(
+    "settings:testGeminiKey",
+    async (_event, apiKey: string, baseUrl?: string) => {
+      const result = await fetchGeminiModels(apiKey, baseUrl);
+      if (result.ok && result.models) {
+        settings.set("geminiModelList", result.models);
+        settings.set("geminiModelListFetchedAt", Date.now());
+      }
+      return result;
+    }
+  );
+
   // Open URL in default browser
   ipcMain.handle("shell:openExternal", (_event, url: string) => {
     if (url.startsWith("https://")) {
@@ -237,7 +403,7 @@ app.whenReady().then(() => {
 
   setupIPC();
 
-  const tray = createTray({
+  createTray({
     onChat: () => {
       if (chatWindow && !chatWindow.isDestroyed()) {
         chatWindow.focus();

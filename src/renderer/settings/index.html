@@ -190,6 +190,43 @@
     }
 
     button.save:active { transform: scale(0.98); }
+
+    button.test {
+      padding: 8px 14px;
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    button.test:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-focus);
+    }
+
+    button.test:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button.test.testing {
+      color: var(--text-secondary);
+    }
+
+    .hint {
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--text-tertiary);
+      line-height: 1.4;
+    }
+
+    .hint.ok { color: var(--success); }
+    .hint.error { color: #f87171; }
   </style>
 </head>
 <body>
@@ -213,8 +250,18 @@
   </div>
 
   <div class="field">
+    <label>Google Gemini API Key</label>
+    <input type="password" id="geminiApiKey" placeholder="AIza... (Gemini vision models)">
+  </div>
+
+  <div class="field">
     <label>AssemblyAI API Key</label>
     <input type="password" id="assemblyaiApiKey" placeholder="Voice transcription">
+  </div>
+
+  <div class="field">
+    <label>Groq API Key</label>
+    <input type="password" id="groqApiKey" placeholder="gsk-... (Whisper STT, default provider)">
   </div>
 
   <div class="field">
@@ -252,10 +299,29 @@
   <div class="field">
     <label>Transcription Provider</label>
     <select id="transcriptionProvider">
-      <option value="assemblyai">AssemblyAI (cloud)</option>
+      <option value="groq">Groq Whisper (cloud, default)</option>
       <option value="openai">OpenAI Whisper (cloud)</option>
+      <option value="assemblyai">AssemblyAI (cloud)</option>
       <option value="whisper-local">Whisper Local (offline)</option>
     </select>
+  </div>
+
+  <div id="groqSttGroup">
+    <div class="field">
+      <label>Groq Base URL</label>
+      <input type="text" id="groqBaseUrl" placeholder="https://api.groq.com/openai/v1">
+    </div>
+
+    <div class="field">
+      <label>Groq Model</label>
+      <select id="groqSttModel"></select>
+      <div class="hint" id="groqSttModelHint">Click "Test API Key" to load available models.</div>
+    </div>
+
+    <div class="field">
+      <button type="button" class="test" id="testGroq">Test API Key</button>
+      <div class="hint" id="testGroqResult"></div>
+    </div>
   </div>
 
   <div class="field">
@@ -276,6 +342,7 @@
       <option value="anthropic">Anthropic (Claude)</option>
       <option value="openai">OpenAI (GPT)</option>
       <option value="openrouter">OpenRouter (300+ models)</option>
+      <option value="gemini">Google (Gemini)</option>
     </select>
   </div>
 
@@ -308,6 +375,40 @@
     <input type="text" id="openrouterModel" placeholder="e.g. anthropic/claude-sonnet-4-5, google/gemini-2.5-pro">
   </div>
 
+  <div id="geminiModelGroup" style="display:none">
+    <div class="field">
+      <label>Gemini Base URL</label>
+      <input type="text" id="geminiBaseUrl" placeholder="https://generativelanguage.googleapis.com">
+    </div>
+
+    <div class="field">
+      <label>Gemini Model</label>
+      <select id="geminiModel"></select>
+      <div class="hint" id="geminiModelHint">Click "Test API connection" to load available models.</div>
+    </div>
+
+    <div class="field">
+      <label>Reasoning</label>
+      <select id="geminiReasoning">
+        <option value="default">Default (model decides)</option>
+        <option value="off">Off (fastest)</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High (most thorough)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Temperature</label>
+      <input type="number" id="geminiTemperature" min="0" max="2" step="0.1" placeholder="1">
+    </div>
+
+    <div class="field">
+      <button type="button" class="test" id="testGemini">Test API connection</button>
+      <div class="hint" id="testGeminiResult"></div>
+    </div>
+  </div>
+
   <div class="section-label">Window</div>
 
   <div class="toggle-row">
@@ -338,20 +439,119 @@
 
   <div id="status" class="status-bar warn">
     <div class="dot"></div>
-    <span>Enter your Anthropic API key to get started</span>
+    <span>Enter your AI API key to get started</span>
   </div>
 
   <button class="save" id="save">Save Settings</button>
 
   <script>
+    const GROQ_DEFAULT_BASE_URL = 'https://api.groq.com/openai/v1';
+    const GROQ_DEFAULT_STT_MODEL = 'whisper-large-v3-turbo';
+    const GROQ_MODEL_LIST_TTL_MS = 5 * 24 * 60 * 60 * 1000;
+
+    const GEMINI_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
+    const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash';
+
     const fields = [
-      'anthropicApiKey', 'openaiApiKey', 'openrouterApiKey', 'assemblyaiApiKey', 'elevenlabsApiKey',
+      'anthropicApiKey', 'openaiApiKey', 'openrouterApiKey', 'assemblyaiApiKey', 'groqApiKey', 'elevenlabsApiKey',
+      'geminiApiKey',
       'proxyUrl', 'useProxy', 'pushToTalkHotkey', 'transcriptionProvider',
       'aiProvider', 'claudeModel', 'openaiModel', 'openrouterModel',
+      'geminiBaseUrl', 'geminiModel', 'geminiReasoning', 'geminiTemperature',
+      'groqBaseUrl', 'groqSttModel',
       'alwaysOnTop', 'cursorBuddyEnabled', 'hipaaMode'
     ];
 
+    function renderGroqModelDropdown(savedModel, cachedList) {
+      const select = document.getElementById('groqSttModel');
+      const hint = document.getElementById('groqSttModelHint');
+      const seen = new Set();
+      const options = [];
+      const push = (id) => {
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        options.push(id);
+      };
+      push(GROQ_DEFAULT_STT_MODEL);
+      push(savedModel);
+      for (const id of (cachedList || [])) push(id);
+
+      select.innerHTML = '';
+      for (const id of options) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = id;
+        if (id === savedModel) opt.selected = true;
+        select.appendChild(opt);
+      }
+
+      const settings = window.__clickySettings || {};
+      const fetchedAt = settings.groqSttModelListFetchedAt || 0;
+      if (fetchedAt) {
+        const days = Math.floor((Date.now() - fetchedAt) / (24 * 60 * 60 * 1000));
+        const label = days <= 0 ? 'today' : days === 1 ? '1 day ago' : `${days} days ago`;
+        hint.className = 'hint';
+        hint.textContent = `Updated ${label} · click "Test API Key" to refresh.`;
+      } else {
+        hint.className = 'hint';
+        hint.textContent = 'Click "Test API Key" to load available models.';
+      }
+    }
+
+    function renderGeminiModelDropdown(savedModel, cachedList) {
+      const select = document.getElementById('geminiModel');
+      const seen = new Set();
+      const options = [];
+      const push = (id) => {
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        options.push(id);
+      };
+      push(GEMINI_DEFAULT_MODEL);
+      push(savedModel);
+      for (const id of (cachedList || [])) push(id);
+
+      select.innerHTML = '';
+      for (const id of options) {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = id;
+        if (id === savedModel) opt.selected = true;
+        select.appendChild(opt);
+      }
+
+      const settings = window.__clickySettings || {};
+      const hint = document.getElementById('geminiModelHint');
+      const fetchedAt = settings.geminiModelListFetchedAt || 0;
+      hint.className = 'hint';
+      if (fetchedAt) {
+        const days = Math.floor((Date.now() - fetchedAt) / (24 * 60 * 60 * 1000));
+        const label = days <= 0 ? 'today' : days === 1 ? '1 day ago' : `${days} days ago`;
+        hint.textContent = `Updated ${label} · click "Test API connection" to refresh.`;
+      } else {
+        hint.textContent = 'Click "Test API connection" to load available models.';
+      }
+    }
+
+    function setTestGeminiResult(message, kind) {
+      const el = document.getElementById('testGeminiResult');
+      el.className = 'hint ' + (kind || '');
+      el.textContent = message;
+    }
+
+    function updateSttProviderUI() {
+      const provider = document.getElementById('transcriptionProvider').value;
+      document.getElementById('groqSttGroup').style.display = provider === 'groq' ? '' : 'none';
+    }
+
+    function setTestGroqResult(message, kind) {
+      const el = document.getElementById('testGroqResult');
+      el.className = 'hint ' + (kind || '');
+      el.textContent = message;
+    }
+
     window.clicky.getSettings().then((settings) => {
+      window.__clickySettings = settings;
       fields.forEach((key) => {
         const el = document.getElementById(key);
         if (!el) return;
@@ -367,8 +567,36 @@
         voiceSelect.value = settings.ttsProvider || 'local';
       }
 
+      renderGroqModelDropdown(
+        settings.groqSttModel || GROQ_DEFAULT_STT_MODEL,
+        settings.groqSttModelList || []
+      );
+      renderGeminiModelDropdown(
+        settings.geminiModel || GEMINI_DEFAULT_MODEL,
+        settings.geminiModelList || []
+      );
       updateProviderUI();
+      updateSttProviderUI();
       updateStatus(settings);
+
+      // Auto-refresh the model list on settings open if the cache is
+      // missing or older than 5 days. Silent, non-blocking.
+      const apiKey = settings.groqApiKey;
+      const baseUrl = settings.groqBaseUrl || GROQ_DEFAULT_BASE_URL;
+      const fetchedAt = settings.groqSttModelListFetchedAt || 0;
+      const stale = !fetchedAt || (Date.now() - fetchedAt) > GROQ_MODEL_LIST_TTL_MS;
+      if (apiKey && stale) {
+        window.clicky.refreshGroqModelList(apiKey, baseUrl).then(async (res) => {
+          if (res && res.ok) {
+            const fresh = await window.clicky.getSettings();
+            window.__clickySettings = fresh;
+            renderGroqModelDropdown(
+              fresh.groqSttModel || GROQ_DEFAULT_STT_MODEL,
+              fresh.groqSttModelList || []
+            );
+          }
+        }).catch(() => { /* ignore — non-fatal */ });
+      }
     });
 
     function updateProviderUI() {
@@ -376,19 +604,94 @@
       document.getElementById('claudeModelGroup').style.display = provider === 'anthropic' ? '' : 'none';
       document.getElementById('openaiModelGroup').style.display = provider === 'openai' ? '' : 'none';
       document.getElementById('openrouterModelGroup').style.display = provider === 'openrouter' ? '' : 'none';
+      document.getElementById('geminiModelGroup').style.display = provider === 'gemini' ? '' : 'none';
     }
 
     document.getElementById('aiProvider').addEventListener('change', updateProviderUI);
     updateProviderUI();
+    document.getElementById('transcriptionProvider').addEventListener('change', updateSttProviderUI);
+    updateSttProviderUI();
 
     document.getElementById('hipaaMode').addEventListener('change', (e) => {
       if (e.target.checked) {
         document.getElementById('transcriptionProvider').value = 'whisper-local';
         document.getElementById('ttsProvider').value = 'local';
+        updateSttProviderUI();
       }
     });
 
-    document.getElementById('save').addEventListener('click', () => {
+    document.getElementById('testGroq').addEventListener('click', async () => {
+      const btn = document.getElementById('testGroq');
+      const apiKey = document.getElementById('groqApiKey').value.trim();
+      const baseUrl = (document.getElementById('groqBaseUrl').value.trim()) || GROQ_DEFAULT_BASE_URL;
+      if (!apiKey) {
+        setTestGroqResult('Enter your Groq API key above first.', 'error');
+        return;
+      }
+      btn.disabled = true;
+      btn.classList.add('testing');
+      btn.textContent = 'Testing…';
+      setTestGroqResult('Verifying API key…', '');
+      try {
+        const res = await window.clicky.testGroqKey(apiKey, baseUrl);
+        if (res && res.ok) {
+          const count = (res.models || []).length;
+          setTestGroqResult(`Connected · ${count} Whisper model${count === 1 ? '' : 's'} available.`, 'ok');
+          // Re-render the dropdown with the fresh list
+          const fresh = await window.clicky.getSettings();
+          window.__clickySettings = fresh;
+          renderGroqModelDropdown(
+            document.getElementById('groqSttModel').value || GROQ_DEFAULT_STT_MODEL,
+            fresh.groqSttModelList || []
+          );
+        } else {
+          setTestGroqResult((res && res.error) || 'Test failed.', 'error');
+        }
+      } catch (err) {
+        setTestGroqResult('Test failed: ' + (err && err.message ? err.message : String(err)), 'error');
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('testing');
+        btn.textContent = 'Test API Key';
+      }
+    });
+
+    document.getElementById('testGemini').addEventListener('click', async () => {
+      const btn = document.getElementById('testGemini');
+      const apiKey = document.getElementById('geminiApiKey').value.trim();
+      const baseUrl = (document.getElementById('geminiBaseUrl').value.trim()) || GEMINI_DEFAULT_BASE_URL;
+      if (!apiKey) {
+        setTestGeminiResult('Enter your Google Gemini API key above first.', 'error');
+        return;
+      }
+      btn.disabled = true;
+      btn.classList.add('testing');
+      btn.textContent = 'Testing…';
+      setTestGeminiResult('Verifying API key…', '');
+      try {
+        const res = await window.clicky.testGeminiKey(apiKey, baseUrl);
+        if (res && res.ok) {
+          const count = (res.models || []).length;
+          setTestGeminiResult(`Connected · ${count} model${count === 1 ? '' : 's'} available.`, 'ok');
+          const fresh = await window.clicky.getSettings();
+          window.__clickySettings = fresh;
+          renderGeminiModelDropdown(
+            document.getElementById('geminiModel').value || GEMINI_DEFAULT_MODEL,
+            fresh.geminiModelList || []
+          );
+        } else {
+          setTestGeminiResult((res && res.error) || 'Test failed.', 'error');
+        }
+      } catch (err) {
+        setTestGeminiResult('Test failed: ' + (err && err.message ? err.message : String(err)), 'error');
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('testing');
+        btn.textContent = 'Test API connection';
+      }
+    });
+
+    document.getElementById('save').addEventListener('click', async () => {
       const values = {};
       fields.forEach((key) => {
         const el = document.getElementById(key);
@@ -417,12 +720,23 @@
 
     function updateStatus(settings) {
       const status = document.getElementById('status');
-      if ((settings.useProxy && settings.proxyUrl) || settings.anthropicApiKey) {
+      const providerLabels = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini' };
+      const keyMap = {
+        anthropic: settings.anthropicApiKey,
+        openai: settings.openaiApiKey,
+        openrouter: settings.openrouterApiKey,
+        gemini: settings.geminiApiKey
+      };
+      const provider = settings.aiProvider || 'anthropic';
+      const hasProxy = settings.useProxy && settings.proxyUrl;
+      const hasKey = !!keyMap[provider];
+      if (hasProxy || hasKey) {
         status.className = 'status-bar ok';
         status.innerHTML = '<div class="dot"></div><span>Ready</span>';
       } else {
         status.className = 'status-bar warn';
-        status.innerHTML = '<div class="dot"></div><span>Enter your Anthropic API key to get started</span>';
+        const label = providerLabels[provider] || 'AI';
+        status.innerHTML = '<div class="dot"></div><span>Enter your ' + label + ' API key to get started</span>';
       }
     }
   </script>

@@ -52,13 +52,15 @@ You: "Voilà [POINT:680,600:Bouton Enregistrer:screen0]."
 
 ## Multi-monitor
 
-When the user has more than one screen, you receive one image per display (screen0, screen1, ...). Before you answer:
+When the user has more than one screen, you receive one image per display. **Each image is preceded by a "=== screenN ===" text label — that label, NOT the image's position in the list, tells you the screen index.** Two monitors can produce identically-sized images, so NEVER infer the index from order or resolution. Read the label that sits directly above each image.
 
-1. Scan ALL provided screenshots, not just screen0. The element the user is asking about may be on any of them.
-2. If the user hints at a specific screen ("my other monitor", "l'autre écran", "on the left screen", "à droite"), use that screen.
-3. If no hint is given and the element appears on only one screen, use that screen.
+Before you answer:
+
+1. Scan ALL provided screenshots, not just the first. The element the user is asking about may be on any of them.
+2. Identify which labelled image actually contains the element (match the app, window title, and visible content).
+3. If the user hints at a specific screen ("my other monitor", "l'autre écran", "on the left screen", "à droite"), use that screen.
 4. If the element is visible on multiple screens, prefer the one where it's clearest/largest.
-5. The screenN index in your POINT tag MUST match the screen where you actually found the element (screen0 for the first image, screen1 for the second, etc.).
+5. The screenN index in your POINT tag MUST be the label of the image you actually found the element in. Double-check: if the element is in the image labelled "=== screen1 ===", the tag MUST say screen1, never screen0. Mismatching this points the cursor at the wrong monitor.
 
 ## Disambiguating visually similar elements
 
@@ -112,32 +114,43 @@ export class ClaudeService {
       ? proxyUrl
       : "https://api.anthropic.com";
 
-    // Build message content with images
+    // Build message content. CRITICAL for multi-monitor accuracy: label each
+    // image with a text block IMMEDIATELY BEFORE it, rather than dumping all
+    // images then one text block. When two monitors downsample to the same
+    // dimensions (e.g. 1568x882), the model otherwise has to guess which image
+    // is screen0 vs screen1 from block order alone — and it guesses wrong,
+    // emitting the right coords on the wrong screenN. Interleaved labels let
+    // the model bind each image to its index directly.
     const userContent: Array<Record<string, unknown>> = [];
 
-    // Add screenshots as images
-    for (const screenshot of params.screenshots) {
-      userContent.push({
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: "image/jpeg",
-          data: screenshot.data,
-        },
-      });
-    }
-
-    // Add screen context
+    // Leading context: the question, cursor, and how many screens follow.
     userContent.push({
       type: "text",
       text: [
         `User says: "${params.transcript}"`,
         `Cursor position: (${params.cursorPosition.x}, ${params.cursorPosition.y})`,
-        `Screens (give POINT coordinates in IMAGE pixels — use the image dimensions below, NOT the actual screen resolution):`,
-        ...params.screenshots.map((s, i) =>
-          `  screen${i}: image is ${s.imageDimensions.width}x${s.imageDimensions.height} px (actual display ${s.bounds.width}x${s.bounds.height} at ${s.bounds.x},${s.bounds.y})`
-        ),
+        `You are given ${params.screenshots.length} screen image(s) below, each preceded by its screenN label.`,
+        `Give POINT coordinates in IMAGE pixels — use the per-image dimensions stated in each label, NOT the actual screen resolution.`,
       ].join("\n"),
+    });
+
+    // Interleave: label text block, then its image.
+    params.screenshots.forEach((s, i) => {
+      userContent.push({
+        type: "text",
+        text:
+          `=== screen${i} === image is ${s.imageDimensions.width}x${s.imageDimensions.height} px ` +
+          `(physical display ${s.bounds.width}x${s.bounds.height} at ${s.bounds.x},${s.bounds.y}). ` +
+          `The next image IS screen${i}. Any element you locate in it MUST use screen${i} in its POINT tag.`,
+      });
+      userContent.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: "image/jpeg",
+          data: s.data,
+        },
+      });
     });
 
     // Build messages array from conversation history

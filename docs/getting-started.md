@@ -35,10 +35,11 @@ Clicky will capture a screenshot of your display, send it to Claude along with y
 | Service | What it does | Required? | Free tier | Link |
 |---------|-------------|-----------|-----------|------|
 | **Anthropic** | AI responses (Claude) | Yes | $5 credit on signup | [console.anthropic.com](https://console.anthropic.com/) |
-| **AssemblyAI** | Voice transcription | No | 100 hours free | [assemblyai.com](https://www.assemblyai.com/) |
+| **Groq** | Voice transcription (default STT) | No | Generous free tier | [console.groq.com](https://console.groq.com/) |
+| **AssemblyAI** | Real-time voice transcription | No | 100 hours free | [assemblyai.com](https://www.assemblyai.com/) |
 | **ElevenLabs** | Natural text-to-speech | No | 10,000 chars/month | [elevenlabs.io](https://elevenlabs.io/) |
 
-Without AssemblyAI, you can still type questions. Without ElevenLabs, Clicky falls back to Windows' built-in speech (SAPI) — functional but robotic.
+Without a transcription provider, you can still type questions. Without ElevenLabs, Clicky falls back to Windows' built-in speech (SAPI) — functional but robotic.
 
 ## System Tray
 

@@ -9,13 +9,18 @@ interface SettingsSchema {
   openrouterApiKey: string;
   assemblyaiApiKey: string;
   elevenlabsApiKey: string;
+  groqApiKey: string;
 
   // Optional proxy (for non-BYOK / org deployments)
   proxyUrl: string;
   useProxy: boolean;
 
   // Transcription
-  transcriptionProvider: "assemblyai" | "openai" | "whisper-local";
+  transcriptionProvider: "assemblyai" | "openai" | "whisper-local" | "groq";
+  groqBaseUrl: string;
+  groqSttModel: string;
+  groqSttModelList: string[];
+  groqSttModelListFetchedAt: number;
 
   // TTS
   ttsEnabled: boolean;
@@ -27,10 +32,19 @@ interface SettingsSchema {
   pushToTalkHotkey: string;
 
   // AI Provider
-  aiProvider: "anthropic" | "openai" | "openrouter";
+  aiProvider: "anthropic" | "openai" | "openrouter" | "gemini";
   claudeModel: string;
   openaiModel: string;
   openrouterModel: string;
+
+  // Google Gemini
+  geminiApiKey: string;
+  geminiBaseUrl: string;
+  geminiModel: string;
+  geminiReasoning: "default" | "off" | "low" | "medium" | "high";
+  geminiTemperature: number;
+  geminiModelList: string[];
+  geminiModelListFetchedAt: number;
 
   // UI
   alwaysOnTop: boolean;
@@ -46,9 +60,14 @@ const defaults: SettingsSchema = {
   openrouterApiKey: "",
   assemblyaiApiKey: "",
   elevenlabsApiKey: "",
+  groqApiKey: "",
   proxyUrl: "",
   useProxy: false,
-  transcriptionProvider: "assemblyai",
+  transcriptionProvider: "groq",
+  groqBaseUrl: "https://api.groq.com/openai/v1",
+  groqSttModel: "whisper-large-v3-turbo",
+  groqSttModelList: [],
+  groqSttModelListFetchedAt: 0,
   ttsEnabled: true,
   ttsProvider: "local",
   elevenlabsVoiceId: "kPzsL2i3teMYv0FxEYQ6",
@@ -60,6 +79,13 @@ const defaults: SettingsSchema = {
   claudeModel: "claude-sonnet-4-5-20250929",
   openaiModel: "gpt-4o",
   openrouterModel: "anthropic/claude-sonnet-4-5",
+  geminiApiKey: "",
+  geminiBaseUrl: "",
+  geminiModel: "gemini-3.5-flash",
+  geminiReasoning: "default",
+  geminiTemperature: 1,
+  geminiModelList: [],
+  geminiModelListFetchedAt: 0,
   hipaaMode: false,
 };
 

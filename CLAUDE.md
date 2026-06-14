@@ -32,7 +32,8 @@ src/
 │   ├── claude.ts          # Anthropic — pass-1 query + pass-2 refinePoint
 │   ├── openai-chat.ts     # OpenAI chat completion (vision)
 │   ├── openrouter-chat.ts # OpenRouter (routes to various models)
-│   ├── transcription/     # AssemblyAI / OpenAI Whisper / whisper.cpp local
+│   ├── gemini-chat.ts     # Google Gemini (@google/genai SDK, vision)
+│   ├── transcription/     # Groq / AssemblyAI / OpenAI Whisper / whisper.cpp local
 │   └── tts/               # ElevenLabs / OpenAI TTS / Windows SAPI
 ├── preload/               # contextBridge between main and renderer
 └── renderer/              # HTML/CSS/JS for each window
@@ -47,10 +48,11 @@ src/
    after push-to-talk captures and decodes the mic blob to 16-bit PCM and
    sends it via `audio:recording-complete`.
 2. `main/audio.ts` routes PCM to the configured transcription provider
-   (`whisper-local` locally via whisper.cpp, or `openai` via the Whisper
-   API). The transcript is passed to `CompanionManager.processQuery`.
+    (`whisper-local` locally via whisper.cpp, `groq` via Groq's OpenAI-
+    compatible endpoint, or `openai` / `assemblyai` via the OpenAI Whisper
+    API). The transcript is passed to `CompanionManager.processQuery`.
 3. `main/companion.ts` captures all screens (`ScreenCapture.captureAllScreens`),
-   picks the current `AIProvider` (Claude / OpenAI / OpenRouter) and calls
+   picks the current `AIProvider` (Claude / OpenAI / OpenRouter / Gemini) and calls
    `query()` with the transcript, screenshots, cursor position, and trimmed
    conversation history.
 4. The LLM responds with free-form text containing inline POINT tags in the
