@@ -38,6 +38,7 @@ interface SettingsSchema {
   aiProvider: "anthropic" | "openai" | "openrouter" | "gemini";
   claudeModel: string;
   openaiModel: string;
+  openaiReasoning: "off" | "low" | "medium" | "high";
   openrouterModel: string;
 
   // Google Gemini
@@ -52,6 +53,8 @@ interface SettingsSchema {
   // UI
   alwaysOnTop: boolean;
   cursorBuddyEnabled: boolean;
+  popoverWidth: number;
+  popoverHeight: number;
 
   // HIPAA
   hipaaMode: boolean;
@@ -81,9 +84,12 @@ const defaults: SettingsSchema = {
   pushToTalkHotkey: "Ctrl+Shift",
   alwaysOnTop: false,
   cursorBuddyEnabled: true,
+  popoverWidth: 380,
+  popoverHeight: 600,
   aiProvider: "anthropic",
   claudeModel: "claude-sonnet-4-5-20250929",
   openaiModel: "gpt-4o",
+  openaiReasoning: "off",
   openrouterModel: "anthropic/claude-sonnet-4-5",
   geminiApiKey: "",
   geminiBaseUrl: "",

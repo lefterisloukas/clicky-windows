@@ -1,5 +1,5 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell } from "electron";
-import { createTray } from "./tray";
+import { createTray, getTray } from "./tray";
 import { HotkeyManager } from "./hotkey";
 import { AudioCapture } from "./audio";
 import { SettingsStore } from "./settings";
@@ -277,12 +277,29 @@ function createChatWindow(): BrowserWindow {
   return win;
 }
 
-function createSettingsWindow(): BrowserWindow {
+// ---- Settings popover (tray-anchored) ----
+// A frameless, taskbar-less panel that drops down from the tray icon and
+// auto-hides on blur. Created once and reused (hidden, not destroyed) so
+// toggling is instant and blur-to-dismiss works reliably. Resizable from its
+// edges; the size the user leaves it at is remembered across sessions.
+const POPOVER_MIN_WIDTH = 320;
+const POPOVER_MIN_HEIGHT = 420;
+let lastPopoverHide = 0;
+
+function createPopover(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 500,
-    height: 600,
-    resizable: false,
+    width: Math.max(POPOVER_MIN_WIDTH, settings.get("popoverWidth") || 380),
+    height: Math.max(POPOVER_MIN_HEIGHT, settings.get("popoverHeight") || 600),
+    minWidth: POPOVER_MIN_WIDTH,
+    minHeight: POPOVER_MIN_HEIGHT,
     show: false,
+    frame: false,
+    resizable: true,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    fullscreenable: false,
+    minimizable: false,
+    maximizable: false,
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "index.js"),
       contextIsolation: true,
@@ -291,8 +308,81 @@ function createSettingsWindow(): BrowserWindow {
   });
 
   win.loadFile(path.join(__dirname, "..", "..", "src", "renderer", "settings", "index.html"));
-  win.once("ready-to-show", () => win.show());
+  // Dismiss when focus leaves the popover (clicking anywhere else). Remember
+  // the current size so reopening keeps the dimensions the user chose.
+  win.on("blur", () => {
+    if (!win.isDestroyed() && win.isVisible()) {
+      const { width, height } = win.getBounds();
+      settings.set("popoverWidth", width);
+      settings.set("popoverHeight", height);
+      win.hide();
+      lastPopoverHide = Date.now();
+    }
+  });
   return win;
+}
+
+// Anchor the popover to the tray icon, clamped inside the display's work area.
+function positionPopover(win: BrowserWindow): void {
+  const tray = getTray();
+  const { width: w, height: h } = win.getBounds();
+  if (tray) {
+    const t = tray.getBounds();
+    const wa = screen.getDisplayMatching(t).workArea;
+    let x = Math.round(t.x + t.width / 2 - w / 2);
+    x = Math.max(wa.x, Math.min(x, wa.x + wa.width - w));
+    // Taskbar at top → drop below the icon; otherwise sit above it.
+    const y = t.y <= wa.y + 10 ? wa.y : Math.max(wa.y, wa.y + wa.height - h);
+    win.setPosition(x, y, false);
+  } else {
+    const wa = screen.getPrimaryDisplay().workArea;
+    win.setPosition(wa.x + wa.width - w, wa.y + wa.height - h, false);
+  }
+}
+
+// Show (or re-focus) the popover anchored to the tray. Used by the tray
+// "Settings" item, the chat gear button, and first-run onboarding.
+function showPopover(): void {
+  if (!settingsWindow || settingsWindow.isDestroyed()) {
+    settingsWindow = createPopover();
+    settingsWindow.on("closed", () => {
+      settingsWindow = null;
+    });
+  }
+  const win = settingsWindow;
+  positionPopover(win);
+  win.show();
+  win.focus();
+}
+
+// Tray left-click. Closes the popover if it's open; otherwise opens it. The
+// guard swallows the click that immediately follows blur-hide, so clicking the
+// tray icon while the popover is open closes it instead of reopening it.
+function togglePopover(): void {
+  if (
+    settingsWindow &&
+    !settingsWindow.isDestroyed() &&
+    settingsWindow.isVisible()
+  ) {
+    settingsWindow.hide();
+    lastPopoverHide = Date.now();
+    return;
+  }
+  if (Date.now() - lastPopoverHide < 300) return;
+  showPopover();
+}
+
+// Focus the chat window if it exists, otherwise create it. Chat is opened
+// lazily — from the tray menu, push-to-talk, or the popover's "Open chat".
+function openChatWindow(): void {
+  if (chatWindow && !chatWindow.isDestroyed()) {
+    chatWindow.focus();
+    return;
+  }
+  chatWindow = createChatWindow();
+  chatWindow.on("closed", () => {
+    chatWindow = null;
+  });
 }
 
 function setupIPC(): void {
@@ -381,6 +471,25 @@ function setupIPC(): void {
   ipcMain.handle("window:close", (event) => {
     BrowserWindow.fromWebContents(event.sender)?.close();
   });
+
+  // Open the settings popover (single config surface) from a renderer —
+  // e.g. the chat window's gear button / first-run CTA.
+  ipcMain.handle("window:openSettings", () => showPopover());
+
+  // Open the chat window from a renderer — e.g. the popover's "Open chat" link.
+  ipcMain.handle("window:openChat", () => openChatWindow());
+
+  // Hide the popover back to the tray (the popover's close button). Mirrors
+  // the blur-dismiss, and remembers the current size on the way out.
+  ipcMain.handle("window:hidePopover", () => {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      const { width, height } = settingsWindow.getBounds();
+      settings.set("popoverWidth", width);
+      settings.set("popoverHeight", height);
+      settingsWindow.hide();
+      lastPopoverHide = Date.now();
+    }
+  });
 }
 
 app.whenReady().then(() => {
@@ -396,37 +505,27 @@ app.whenReady().then(() => {
   setupIPC();
 
   createTray({
-    onChat: () => {
-      if (chatWindow && !chatWindow.isDestroyed()) {
-        chatWindow.focus();
-      } else {
-        chatWindow = createChatWindow();
-        chatWindow.on("closed", () => {
-          chatWindow = null;
-        });
-      }
-    },
-    onSettings: () => {
-      if (settingsWindow && !settingsWindow.isDestroyed()) {
-        settingsWindow.focus();
-      } else {
-        settingsWindow = createSettingsWindow();
-        settingsWindow.on("closed", () => {
-          settingsWindow = null;
-        });
-      }
-    },
+    onChat: () => openChatWindow(),
+    onSettings: () => showPopover(),
+    onToggle: () => togglePopover(),
     onQuit: () => app.quit(),
   });
 
   const hotkeyManager = new HotkeyManager(settings);
   hotkeyManager.register();
 
-  // Open chat on launch so there's something visible
-  chatWindow = createChatWindow();
-  chatWindow.on("closed", () => {
-    chatWindow = null;
-  });
+  // Launch tray-only / background by default. The only thing that opens on
+  // startup is first-run onboarding: if no AI key is configured, drop the
+  // settings popover so a brand-new user lands directly in setup. Otherwise
+  // stay silent in the tray — chat/popover open on demand.
+  const hasAiKey =
+    settings.get("anthropicApiKey") ||
+    settings.get("openaiApiKey") ||
+    settings.get("openrouterApiKey") ||
+    settings.get("geminiApiKey");
+  if (!hasAiKey) {
+    showPopover();
+  }
 
   // Start cursor buddy if enabled
   if (settings.get("cursorBuddyEnabled")) {

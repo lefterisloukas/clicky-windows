@@ -792,7 +792,7 @@
     <button class="gear-btn" id="pin-btn" title="Pin on top">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 01-1.11 1.79l-1.78.9A2 2 0 005 15.24V16a1 1 0 001 1h12a1 1 0 001-1v-.76a2 2 0 00-1.11-1.79l-1.78-.9A2 2 0 0115 10.76V7a1 1 0 011-1 1 1 0 001-1V4a1 1 0 00-1-1H8a1 1 0 00-1 1v1a1 1 0 001 1 1 1 0 011 1z"/></svg>
     </button>
-    <button class="gear-btn" id="toggle-setup" title="API Keys">
+    <button class="gear-btn" id="open-settings" title="Settings">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
     </button>
     <button class="gear-btn" id="help-btn" title="Help & Docs">
@@ -837,69 +837,6 @@
     </a>
   </div>
 
-  <!-- Setup Panel -->
-  <div id="setup" class="hidden">
-    <h3>Connect your API keys</h3>
-
-    <div class="key-group">
-      <label>AI Provider</label>
-      <select id="setup-provider" style="width:100%;padding:8px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:12px;font-family:inherit;outline:none;">
-        <option value="anthropic">Anthropic (Claude)</option>
-        <option value="openai">OpenAI (GPT)</option>
-        <option value="openrouter">OpenRouter (300+ models)</option>
-        <option value="gemini">Google (Gemini)</option>
-      </select>
-    </div>
-
-    <div class="key-group" id="setup-model-group">
-      <label>Model</label>
-      <select id="setup-model" style="width:100%;padding:8px 12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:12px;font-family:inherit;outline:none;">
-      </select>
-    </div>
-
-    <div class="key-group">
-      <label>Anthropic Key <span class="badge" id="badge-anthropic">required</span></label>
-      <input type="password" id="key-anthropic" placeholder="sk-ant-api03-...">
-    </div>
-
-    <div class="key-group">
-      <label>OpenAI Key <span class="badge" id="badge-openai">optional</span></label>
-      <input type="password" id="key-openai" placeholder="sk-... (GPT, voice, TTS)">
-    </div>
-
-    <div class="key-group">
-      <label>OpenRouter Key <span class="badge" id="badge-openrouter">optional</span></label>
-      <input type="password" id="key-openrouter" placeholder="sk-or-... (300+ models)">
-    </div>
-
-    <div class="key-group">
-      <label>Google Gemini Key <span class="badge" id="badge-gemini">optional</span></label>
-      <input type="password" id="key-gemini" placeholder="AIza... (Gemini vision models)">
-    </div>
-
-    <div class="key-group">
-      <label>AssemblyAI <span class="badge optional">optional</span></label>
-      <input type="password" id="key-assemblyai" placeholder="Voice transcription key">
-    </div>
-
-    <div class="key-group">
-      <label>Groq <span class="badge optional">optional</span></label>
-      <input type="password" id="key-groq" placeholder="gsk-... (default STT provider)">
-    </div>
-
-    <div class="key-group">
-      <label>ElevenLabs <span class="badge optional">optional</span></label>
-      <input type="password" id="key-elevenlabs" placeholder="Text-to-speech key">
-    </div>
-
-    <div class="setup-footer">
-      <button class="btn-primary" id="save-keys">Save</button>
-      <span class="saved" id="saved-msg">Saved</span>
-    </div>
-
-    <p class="setup-hint">Pick a provider above. You need at least one AI key to get started.</p>
-  </div>
-
   <!-- Messages -->
   <div id="messages">
     <div class="welcome" id="welcome">
@@ -908,6 +845,12 @@
       <p>I can see your screen and answer questions about what's on it. Just type below.</p>
       <div class="shortcuts">
         <kbd>Enter</kbd><span style="color:var(--text-tertiary);font-size:11px">to send</span>
+      </div>
+
+      <!-- First-run CTA — shown only when no AI key is configured -->
+      <div id="setup-cta" class="hidden" style="margin-top:16px;display:flex;flex-direction:column;align-items:center;gap:8px;">
+        <p style="color:var(--text-secondary);font-size:12px;margin:0;">Add an AI provider key to get started.</p>
+        <button class="btn-primary" id="setup-cta-btn" style="padding:8px 18px;">Set up Clicky</button>
       </div>
 
       <div class="help-links">
@@ -965,211 +908,59 @@
     const input = document.getElementById('input');
     const sendBtn = document.getElementById('send');
     const welcome = document.getElementById('welcome');
-    const keyAnthropicInput = document.getElementById('key-anthropic');
-    const keyOpenaiInput = document.getElementById('key-openai');
-    const keyOpenrouterInput = document.getElementById('key-openrouter');
-    const keyGeminiInput = document.getElementById('key-gemini');
-    const keyAssemblyaiInput = document.getElementById('key-assemblyai');
-    const keyGroqInput = document.getElementById('key-groq');
-    const keyElevenlabsInput = document.getElementById('key-elevenlabs');
-    const setupProvider = document.getElementById('setup-provider');
-    const setupModel = document.getElementById('setup-model');
-    const badgeAnthropic = document.getElementById('badge-anthropic');
-    const badgeOpenai = document.getElementById('badge-openai');
-    const badgeOpenrouter = document.getElementById('badge-openrouter');
-    const badgeGemini = document.getElementById('badge-gemini');
-
-    const modelOptions = {
-      anthropic: [
-        { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (latest)' },
-        { value: 'claude-opus-4-6', label: 'Claude Opus 4.6 (smartest)' },
-        { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
-        { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (fastest)' },
-      ],
-      openai: [
-        { value: 'gpt-5.4', label: 'GPT-5.4 (most capable)' },
-        { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini (fast + cheap)' },
-        { value: 'gpt-5.4-nano', label: 'GPT-5.4 Nano (cheapest)' },
-        { value: 'gpt-4.1', label: 'GPT-4.1' },
-        { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
-        { value: 'gpt-4.1-nano', label: 'GPT-4.1 Nano' },
-        { value: 'gpt-4o', label: 'GPT-4o' },
-        { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-      ],
-      openrouter: [
-        { value: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-        { value: 'anthropic/claude-opus-4-6', label: 'Claude Opus 4.6' },
-        { value: 'openai/gpt-5.4', label: 'GPT-5.4' },
-        { value: 'openai/gpt-4o', label: 'GPT-4o' },
-        { value: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-        { value: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-        { value: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick' },
-        { value: 'deepseek/deepseek-r1', label: 'DeepSeek R1' },
-        { value: 'mistralai/mistral-large', label: 'Mistral Large' },
-      ],
-      gemini: [
-        { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash (latest)' },
-        { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (smartest)' },
-        { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-        { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-      ],
-    };
-
-    function updateProviderUI() {
-      const provider = setupProvider.value;
-      const options = modelOptions[provider] || [];
-      setupModel.innerHTML = options.map(o =>
-        `<option value="${o.value}">${o.label}</option>`
-      ).join('');
-
-      badgeAnthropic.className = provider === 'anthropic' ? 'badge required' : 'badge optional';
-      badgeAnthropic.textContent = provider === 'anthropic' ? 'required' : 'optional';
-      badgeOpenai.className = provider === 'openai' ? 'badge required' : 'badge optional';
-      badgeOpenai.textContent = provider === 'openai' ? 'required' : 'optional';
-      badgeOpenrouter.className = provider === 'openrouter' ? 'badge required' : 'badge optional';
-      badgeOpenrouter.textContent = provider === 'openrouter' ? 'required' : 'optional';
-      badgeGemini.className = provider === 'gemini' ? 'badge required' : 'badge optional';
-      badgeGemini.textContent = provider === 'gemini' ? 'required' : 'optional';
-    }
-
-    setupProvider.addEventListener('change', updateProviderUI);
-    const saveKeysBtn = document.getElementById('save-keys');
-    const savedMsg = document.getElementById('saved-msg');
-    const setup = document.getElementById('setup');
     const statusDot = document.getElementById('status-dot');
-    const toggleSetupBtn = document.getElementById('toggle-setup');
+    const openSettingsBtn = document.getElementById('open-settings');
+    const setupCta = document.getElementById('setup-cta');
+    const setupCtaBtn = document.getElementById('setup-cta-btn');
+
+    // Provider label shown in the titlebar once configured. Model and key
+    // configuration now live entirely in the settings window.
+    const providerLabels = { anthropic: 'Claude', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini' };
+    let currentProvider = 'anthropic';
 
     let isConfigured = false;
     let firstMessage = true;
 
-    // Load existing settings
-    window.clicky.getSettings().then((settings) => {
-      console.log('Settings loaded:', JSON.stringify(settings));
+    // Load existing settings — chat only needs the configured/connected state
+    // and the active provider label. All keys/models are configured in the
+    // settings window now.
+    function refreshConfiguredState() {
+      return window.clicky.getSettings().then((settings) => {
+        currentProvider = settings.aiProvider || 'anthropic';
+        const hasKey = settings.anthropicApiKey || settings.openaiApiKey || settings.openrouterApiKey || settings.geminiApiKey;
+        setConfigured(!!hasKey);
+      }).catch((err) => {
+        console.error('Failed to load settings:', err);
+        setConfigured(false);
+      });
+    }
+    refreshConfiguredState();
 
-      if (settings.anthropicApiKey) keyAnthropicInput.value = settings.anthropicApiKey;
-      if (settings.openaiApiKey) keyOpenaiInput.value = settings.openaiApiKey;
-      if (settings.openrouterApiKey) keyOpenrouterInput.value = settings.openrouterApiKey;
-      if (settings.geminiApiKey) keyGeminiInput.value = settings.geminiApiKey;
-      if (settings.assemblyaiApiKey) keyAssemblyaiInput.value = settings.assemblyaiApiKey;
-      if (settings.groqApiKey) keyGroqInput.value = settings.groqApiKey;
-      if (settings.elevenlabsApiKey) keyElevenlabsInput.value = settings.elevenlabsApiKey;
+    // Gear button + first-run CTA both open the single settings window.
+    openSettingsBtn.addEventListener('click', () => window.clicky.openSettings());
+    setupCtaBtn.addEventListener('click', () => window.clicky.openSettings());
 
-      // Set provider + model
-      setupProvider.value = settings.aiProvider || 'anthropic';
-      updateProviderUI();
-      if (settings.aiProvider === 'openai' && settings.openaiModel) {
-        setupModel.value = settings.openaiModel;
-      } else if (settings.aiProvider === 'openrouter' && settings.openrouterModel) {
-        setupModel.value = settings.openrouterModel;
-      } else if (settings.aiProvider === 'gemini' && settings.geminiModel) {
-        setupModel.value = settings.geminiModel;
-      } else if (settings.claudeModel) {
-        setupModel.value = settings.claudeModel;
-      }
-
-      // Check if we have the required key for the chosen provider
-      const hasKey = settings.anthropicApiKey || settings.openaiApiKey || settings.openrouterApiKey || settings.geminiApiKey;
-      if (hasKey) {
-        setConfigured(true);
-      } else {
-        setup.classList.remove('hidden');
-      }
-    }).catch((err) => {
-      console.error('Failed to load settings:', err);
-      setup.classList.remove('hidden');
-    });
-
-    // Toggle setup panel
-    toggleSetupBtn.addEventListener('click', () => {
-      setup.classList.toggle('hidden');
-    });
+    // When the chat window regains focus (e.g. after closing settings),
+    // re-read whether a key has been configured.
+    window.addEventListener('focus', () => { refreshConfiguredState(); });
 
     function setConfigured(configured) {
       isConfigured = configured;
       statusDot.className = configured ? 'status connected' : 'status';
 
       // Update titlebar to show active provider
-      const providerLabels = { anthropic: 'Claude', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini' };
-      const providerLabel = providerLabels[setupProvider.value] || setupProvider.value;
-      document.querySelector('#titlebar .title').textContent = 'Clicky · ' + providerLabel;
+      const providerLabel = providerLabels[currentProvider] || currentProvider;
+      document.querySelector('#titlebar .title').textContent =
+        configured ? 'Clicky · ' + providerLabel : 'Clicky';
 
-      if (configured) {
-        setup.classList.add('hidden');
-        input.focus();
-      } else {
-        setup.classList.remove('hidden');
+      // Show the first-run "Set up Clicky" CTA only while unconfigured and
+      // the welcome screen is still visible.
+      if (setupCta) {
+        setupCta.classList.toggle('hidden', configured || firstMessage === false);
       }
+
+      if (configured) input.focus();
     }
-
-    // Save keys
-    saveKeysBtn.addEventListener('click', () => {
-      const provider = setupProvider.value;
-      window.clicky.setSetting('aiProvider', provider);
-
-      // Save model based on provider
-      if (provider === 'openai') {
-        window.clicky.setSetting('openaiModel', setupModel.value);
-      } else if (provider === 'openrouter') {
-        window.clicky.setSetting('openrouterModel', setupModel.value);
-      } else if (provider === 'gemini') {
-        window.clicky.setSetting('geminiModel', setupModel.value);
-      } else {
-        window.clicky.setSetting('claudeModel', setupModel.value);
-      }
-
-      // Validate required key
-      const anthropicKey = keyAnthropicInput.value.trim();
-      const openaiKey = keyOpenaiInput.value.trim();
-      const openrouterKey = keyOpenrouterInput.value.trim();
-      const geminiKey = keyGeminiInput.value.trim();
-      const keyMap = { anthropic: anthropicKey, openai: openaiKey, openrouter: openrouterKey, gemini: geminiKey };
-      const inputMap = { anthropic: keyAnthropicInput, openai: keyOpenaiInput, openrouter: keyOpenrouterInput, gemini: keyGeminiInput };
-      const requiredKey = keyMap[provider];
-      const requiredInput = inputMap[provider];
-
-      if (!requiredKey) {
-        requiredInput.classList.add('error');
-        requiredInput.addEventListener('input', () => requiredInput.classList.remove('error'), { once: true });
-        return;
-      }
-
-      if (anthropicKey) window.clicky.setSetting('anthropicApiKey', anthropicKey);
-      if (openrouterKey) window.clicky.setSetting('openrouterApiKey', openrouterKey);
-      if (geminiKey) window.clicky.setSetting('geminiApiKey', geminiKey);
-
-      if (openaiKey) {
-        window.clicky.setSetting('openaiApiKey', openaiKey);
-        // Auto-set OpenAI as TTS provider if no other TTS key is set
-        if (!keyElevenlabsInput.value.trim()) {
-          window.clicky.setSetting('ttsProvider', 'openai');
-        }
-      }
-
-      const assemblyaiKey = keyAssemblyaiInput.value.trim();
-      if (assemblyaiKey) {
-        window.clicky.setSetting('assemblyaiApiKey', assemblyaiKey);
-        window.clicky.setSetting('transcriptionProvider', 'assemblyai');
-      }
-
-      const groqKey = keyGroqInput.value.trim();
-      if (groqKey) {
-        window.clicky.setSetting('groqApiKey', groqKey);
-        // Default to Groq for STT only if no other transcription provider is set
-        if (!keyAssemblyaiInput.value.trim() && !openaiKey) {
-          window.clicky.setSetting('transcriptionProvider', 'groq');
-        }
-      }
-
-      const elevenlabsKey = keyElevenlabsInput.value.trim();
-      if (elevenlabsKey) {
-        window.clicky.setSetting('elevenlabsApiKey', elevenlabsKey);
-        window.clicky.setSetting('ttsProvider', 'elevenlabs');
-      }
-
-      savedMsg.classList.add('visible');
-      setTimeout(() => savedMsg.classList.remove('visible'), 2000);
-      setConfigured(true);
-    });
 
     function addMessage(text, role) {
       if (firstMessage) {
