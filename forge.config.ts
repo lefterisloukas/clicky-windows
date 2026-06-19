@@ -8,6 +8,11 @@ const config: ForgeConfig = {
     icon: "assets/icon",
     name: "Clicky",
     executableName: "clicky",
+    // Bundle the local Kokoro TTS model (config + onnx/model_quantized.onnx).
+    // Lands at process.resourcesPath/kokoro in the installed app — see
+    // src/services/tts/kokoro.ts resolveModelDir(). Voices ship inside the
+    // kokoro-js package itself, so they need no extra bundling.
+    extraResource: ["resources/kokoro"],
   },
   makers: [
     new MakerSquirrel({

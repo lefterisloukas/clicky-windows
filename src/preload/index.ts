@@ -93,4 +93,13 @@ contextBridge.exposeInMainWorld("clicky", {
   // Window controls
   minimizeWindow: () => ipcRenderer.invoke("window:minimize"),
   closeWindow: () => ipcRenderer.invoke("window:close"),
+
+  // Open the settings popover (the single config surface)
+  openSettings: () => ipcRenderer.invoke("window:openSettings"),
+
+  // Open the chat window (from the popover's "Open chat" link)
+  openChat: () => ipcRenderer.invoke("window:openChat"),
+
+  // Hide the popover back to the tray (popover close button)
+  hidePopover: () => ipcRenderer.invoke("window:hidePopover"),
 });

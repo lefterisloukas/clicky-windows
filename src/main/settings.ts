@@ -24,9 +24,12 @@ interface SettingsSchema {
 
   // TTS
   ttsEnabled: boolean;
-  ttsProvider: "elevenlabs" | "openai" | "local";
+  ttsProvider: "elevenlabs" | "openai" | "local" | "kokoro";
   elevenlabsVoiceId: string;
   openaiTtsVoice: string;
+  kokoroVoice: string;
+  kokoroSpeed: number;
+  kokoroQuality: "fast" | "best";
 
   // Hotkey
   pushToTalkHotkey: string;
@@ -35,6 +38,7 @@ interface SettingsSchema {
   aiProvider: "anthropic" | "openai" | "openrouter" | "gemini";
   claudeModel: string;
   openaiModel: string;
+  openaiReasoning: "off" | "low" | "medium" | "high";
   openrouterModel: string;
 
   // Google Gemini
@@ -49,6 +53,8 @@ interface SettingsSchema {
   // UI
   alwaysOnTop: boolean;
   cursorBuddyEnabled: boolean;
+  popoverWidth: number;
+  popoverHeight: number;
 
   // HIPAA
   hipaaMode: boolean;
@@ -72,12 +78,18 @@ const defaults: SettingsSchema = {
   ttsProvider: "local",
   elevenlabsVoiceId: "kPzsL2i3teMYv0FxEYQ6",
   openaiTtsVoice: "alloy",
+  kokoroVoice: "af_heart",
+  kokoroSpeed: 1.0,
+  kokoroQuality: "fast",
   pushToTalkHotkey: "Ctrl+Shift",
   alwaysOnTop: false,
   cursorBuddyEnabled: true,
+  popoverWidth: 380,
+  popoverHeight: 600,
   aiProvider: "anthropic",
   claudeModel: "claude-sonnet-4-5-20250929",
   openaiModel: "gpt-4o",
+  openaiReasoning: "off",
   openrouterModel: "anthropic/claude-sonnet-4-5",
   geminiApiKey: "",
   geminiBaseUrl: "",

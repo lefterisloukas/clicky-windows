@@ -42,6 +42,7 @@
     "@google/genai": "^2.8.0",
     "@types/ws": "^8.18.1",
     "electron-updater": "^6.3.0",
+    "kokoro-js": "^1.2.1",
     "ws": "^8.20.0"
   }
 }

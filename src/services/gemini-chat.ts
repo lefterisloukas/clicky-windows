@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { SettingsStore } from "../main/settings";
 import { ScreenshotResult } from "../main/screenshot";
+import { SYSTEM_PROMPT } from "./prompt";
 
 interface ChatQueryParams {
   transcript: string;
@@ -12,17 +13,6 @@ interface ChatQueryParams {
 interface ChatResponse {
   text: string;
 }
-
-const SYSTEM_PROMPT = `You are Clicky, a helpful AI screen companion. You can see the user's screen and hear their voice.
-
-When you want to point at something on the user's screen, embed a coordinate tag in your response like this:
-[POINT:x,y:label:screenN]
-
-- x,y are IMAGE pixel coordinates within the screenshot you see — use the image dimensions given for each screen, NOT the actual monitor resolution. The system scales them to real pixels for you.
-- label is a short (2-5 word) description.
-- screenN is the screen index. Each image is preceded by a "=== screenN ===" label; that label is the index. With multiple monitors, NEVER guess the index from image order or size — read the label directly above the image that contains the element, and match screenN to it. Putting the right coordinates on the wrong screenN points at the wrong monitor.
-
-Be concise and helpful. You're having a real-time conversation — keep responses short and actionable.`;
 
 /**
  * Map the simple reasoning dropdown to Gemini's thinking config. Gemini 3

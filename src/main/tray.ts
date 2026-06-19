@@ -4,10 +4,16 @@ import path from "path";
 interface TrayCallbacks {
   onChat: () => void;
   onSettings: () => void;
+  onToggle: () => void;
   onQuit: () => void;
 }
 
 let tray: Tray | null = null;
+
+/** The tray instance, exposed so the popover can anchor to `tray.getBounds()`. */
+export function getTray(): Tray | null {
+  return tray;
+}
 
 export function createTray(callbacks: TrayCallbacks): Tray {
   const icon = nativeImage.createFromPath(
@@ -39,9 +45,9 @@ export function createTray(callbacks: TrayCallbacks): Tray {
   tray.setToolTip("Clicky — AI Screen Companion");
   tray.setContextMenu(contextMenu);
 
-  // Left-click opens chat directly
+  // Left-click toggles the settings/status popover anchored to the tray icon.
   tray.on("click", () => {
-    callbacks.onChat();
+    callbacks.onToggle();
   });
 
   return tray;

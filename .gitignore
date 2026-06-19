@@ -30,3 +30,6 @@ Desktop.ini
 # Local Whisper binaries & models (downloaded separately, see docs/voice-and-tts.md)
 bin/
 models/
+
+# Local Kokoro TTS model (downloaded separately, see docs/voice-and-tts.md)
+resources/kokoro/

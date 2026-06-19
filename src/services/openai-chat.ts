@@ -1,5 +1,6 @@
 import { SettingsStore } from "../main/settings";
 import { ScreenshotResult } from "../main/screenshot";
+import { SYSTEM_PROMPT } from "./prompt";
 
 interface ChatQueryParams {
   transcript: string;
@@ -12,17 +13,6 @@ interface ChatResponse {
   text: string;
 }
 
-const SYSTEM_PROMPT = `You are Clicky, a helpful AI screen companion. You can see the user's screen and hear their voice.
-
-When you want to point at something on the user's screen, embed a coordinate tag in your response like this:
-[POINT:x,y:label:screenN]
-
-- x,y are IMAGE pixel coordinates within the screenshot you see — use the image dimensions given for each screen, NOT the actual monitor resolution. The system scales them to real pixels for you.
-- label is a short (2-5 word) description.
-- screenN is the screen index. Each image is preceded by a "=== screenN ===" label; that label is the index. With multiple monitors, NEVER guess the index from image order or size — read the label directly above the image that contains the element, and match screenN to it. Putting the right coordinates on the wrong screenN points at the wrong monitor.
-
-Be concise and helpful. You're having a real-time conversation — keep responses short and actionable.`;
-
 export class OpenAIChatService {
   private settings: SettingsStore;
 
@@ -33,6 +23,7 @@ export class OpenAIChatService {
   async query(params: ChatQueryParams): Promise<ChatResponse> {
     const apiKey = this.settings.get("openaiApiKey");
     const model = this.settings.get("openaiModel");
+    const reasoning = this.settings.get("openaiReasoning");
 
     // Build user message content. Interleave a label text block before each
     // image so the model binds each screenshot to its screenN index directly
@@ -78,17 +69,26 @@ export class OpenAIChatService {
       }
     }
 
+    const body: Record<string, unknown> = {
+      model,
+      max_completion_tokens: 1024,
+      messages,
+    };
+
+    // Reasoning effort applies only to reasoning-capable models (o-series,
+    // gpt-5.x). Sending it to a chat model like gpt-4o triggers a 400, so gate
+    // on the model name and only attach when the user opted in (not "off").
+    if (reasoning && reasoning !== "off" && /^(o\d|gpt-5)/.test(model)) {
+      body.reasoning_effort = reasoning;
+    }
+
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model,
-        max_completion_tokens: 1024,
-        messages,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {

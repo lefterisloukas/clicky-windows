@@ -2,743 +2,653 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Clicky Settings</title>
+  <title>Clicky</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-
     :root {
-      --bg-primary: #0a0a0f;
-      --bg-secondary: rgba(255, 255, 255, 0.04);
-      --bg-tertiary: rgba(255, 255, 255, 0.06);
-      --bg-hover: rgba(255, 255, 255, 0.08);
-      --border: rgba(255, 255, 255, 0.08);
-      --border-focus: rgba(99, 140, 255, 0.5);
-      --text-primary: #f0f0f5;
-      --text-secondary: rgba(255, 255, 255, 0.55);
-      --text-tertiary: rgba(255, 255, 255, 0.3);
+      --ground: #0e1117;
+      --surface: #171b24;
+      --surface-2: #1f2430;
+      --surface-3: #262c3a;
+      --line: #2a3140;
+      --line-2: #343b4b;
+      --text: #e6e9f0;
+      --muted: #8b93a7;
+      --faint: #5b6478;
       --accent: #638cff;
-      --accent-hover: #7da0ff;
-      --accent-glow: rgba(99, 140, 255, 0.15);
-      --success: #34d399;
-      --radius-sm: 8px;
-      --radius-md: 12px;
+      --accent-2: #a78bfa;
+      --good: #4ade80;
+      --bad: #fb7185;
+      --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+      --mono: ui-monospace, "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+      --grad: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
     }
-
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
+    html, body { height: 100%; }
     body {
-      font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif;
-      background: var(--bg-primary);
-      color: var(--text-primary);
-      padding: 24px;
+      font-family: var(--sans);
+      background: linear-gradient(180deg, #1c2230, #161a23);
+      color: var(--text);
+      font-size: 13px;
       -webkit-font-smoothing: antialiased;
-      overflow-y: auto;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      user-select: none;
     }
 
-    body::-webkit-scrollbar { width: 4px; }
-    body::-webkit-scrollbar-track { background: transparent; }
-    body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+    /* header */
+    .pop-h { display: flex; align-items: center; gap: 9px; padding: 12px 14px 11px;
+      border-bottom: 1px solid var(--line); flex: none; }
+    .pop-h .gem { width: 17px; height: 17px; }
+    .pop-h .t { font-weight: 700; font-size: 14px; }
+    .pop-h .live { display: inline-flex; align-items: center; gap: 6px; font-size: 11px;
+      color: var(--good); font-family: var(--mono); }
+    .pop-h .live.off { color: var(--faint); }
+    .pop-h .live i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: block; }
+    .pop-h .spacer { flex: 1; }
+    .pop-h .chat-link { font-size: 11px; color: var(--accent); cursor: pointer; background: none;
+      border: none; font-family: inherit; padding: 4px 6px; border-radius: 6px; }
+    .pop-h .chat-link:hover { background: var(--surface-2); color: var(--accent-2); }
+    .pop-h .winx { width: 24px; height: 22px; display: grid; place-items: center; border: none;
+      background: none; color: var(--faint); border-radius: 6px; cursor: pointer; font-family: var(--mono);
+      font-size: 13px; line-height: 1; margin-left: 2px; transition: background .12s, color .12s; }
+    .pop-h .winx:hover { background: #7f1d2e; color: #fff; }
 
-    h1 {
-      font-size: 18px;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-      margin-bottom: 24px;
-    }
+    /* glance strip */
+    .senses { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line);
+      border-bottom: 1px solid var(--line); flex: none; }
+    .sense { background: #181d28; padding: 9px 6px; text-align: center; overflow: hidden; }
+    .sense .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; color: var(--accent-2); }
+    .sense .v { font-size: 12px; font-weight: 650; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sense .s { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-    .section-label {
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--text-tertiary);
-      margin: 24px 0 12px;
-    }
+    /* scroll area */
+    .scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
+    .scroll::-webkit-scrollbar { width: 5px; }
+    .scroll::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
 
-    .section-label:first-of-type { margin-top: 0; }
+    .rows { padding: 7px 8px 4px; }
+    .grp-label { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--faint); padding: 9px 8px 4px; }
 
-    .field { margin-bottom: 14px; }
+    /* accordion row */
+    .arow { border-radius: 9px; }
+    .arow .top { display: flex; align-items: center; gap: 10px; padding: 10px 8px; cursor: pointer;
+      width: 100%; background: none; border: none; border-radius: 9px; color: var(--text); font: inherit;
+      text-align: left; transition: background .12s ease, color .12s ease; }
+    /* Hover feedback (Option A — surface tint): the whole row lightens so it's
+       clear which setting you're about to open. The open row already carries a
+       solid surface, so hover and open never read the same. */
+    .arow:not(.open) .top:hover { background: var(--surface-2); }
+    .arow:not(.open) .top:hover .val { color: var(--text); }
+    @media (prefers-reduced-motion: reduce) { .arow .top { transition: none; } }
+    .arow .top .ic { width: 16px; color: var(--accent-2); flex: none; text-align: center; }
+    .arow .top .nm { font-weight: 550; }
+    .arow .top .nm .ab { color: var(--faint); font-family: var(--mono); font-size: 9.5px; font-weight: 400; margin-left: 5px; }
+    .arow .top .val { margin-left: auto; color: var(--muted); display: inline-flex; align-items: center;
+      gap: 7px; font-size: 12.5px; max-width: 210px; }
+    .arow .top .val .vt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .arow .top .car { color: var(--faint); transition: transform .15s; }
+    .arow.open { background: var(--surface-2); }
+    .arow.open .top .val { color: var(--text); }
+    .arow.open .car { transform: rotate(180deg); }
+    .arow .body { padding: 0 8px 12px; display: none; }
+    .arow.open .body { display: block; }
 
-    label {
-      display: block;
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text-secondary);
-      margin-bottom: 6px;
-    }
+    /* nested provider -> options */
+    .nest { border-left: 2px solid var(--accent); margin-left: 8px; padding-left: 10px; }
+    .nlabel { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--faint); margin: 11px 0 6px; }
+    .nlabel:first-child { margin-top: 2px; }
+    .nlabel b { color: var(--accent-2); }
 
-    input[type="text"], input[type="password"], select {
-      width: 100%;
-      padding: 9px 12px;
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      color: var(--text-primary);
-      font-size: 13px;
-      font-family: inherit;
-      outline: none;
-      transition: all 0.2s ease;
-    }
+    /* segmented control */
+    .seg { display: grid; gap: 4px; background: var(--ground); border-radius: 8px; padding: 3px; }
+    .seg.c4 { grid-template-columns: repeat(4, 1fr); }
+    .seg.c5 { grid-template-columns: repeat(5, 1fr); }
+    .seg button { font: inherit; font-size: 10.5px; border: none; background: transparent; color: var(--muted);
+      padding: 7px 0; border-radius: 6px; cursor: pointer; }
+    .seg button:hover { color: var(--text); }
+    .seg button.on { background: var(--grad); color: #0c1322; font-weight: 700; }
 
-    input:focus, select:focus {
-      border-color: var(--border-focus);
-      background: var(--bg-tertiary);
-      box-shadow: 0 0 0 3px var(--accent-glow);
-    }
-
+    /* inputs / selects */
+    select, input[type="text"], input[type="password"], input[type="number"] {
+      width: 100%; padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--line);
+      border-radius: 7px; color: var(--text); font-size: 12.5px; font-family: inherit; outline: none; }
+    input, select, textarea { user-select: text; }
     select { cursor: pointer; }
-    select option { background: #1a1a2e; }
+    select:focus, input:focus { border-color: var(--accent); }
+    select option { background: #12121e; color: var(--text); }
+    select optgroup { background: #12121e; color: #cfcfe0; font-weight: 600; font-style: normal; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
 
-    .toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 0;
-    }
+    .test { margin-top: 8px; padding: 7px 12px; background: var(--surface-3); color: var(--text);
+      border: 1px solid var(--line); border-radius: 7px; font-size: 12px; font-family: inherit; cursor: pointer; }
+    .test:hover { border-color: var(--accent); }
+    .test:disabled { opacity: 0.5; cursor: not-allowed; }
+    .hint { margin-top: 6px; font-size: 10.5px; color: var(--faint); line-height: 1.4; }
+    .hint.ok { color: var(--good); } .hint.error { color: var(--bad); }
 
-    .toggle-row label { margin-bottom: 0; }
+    /* key list */
+    .krow { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; }
+    .krow .kmeta { flex: none; width: 84px; }
+    .krow .kmeta .svc { font-size: 12px; font-weight: 550; }
+    .krow .kmeta .tag { font-size: 9px; color: var(--faint); font-family: var(--mono); display: block; }
+    .krow input { flex: 1; }
 
-    .toggle {
-      position: relative;
-      width: 40px;
-      height: 22px;
-      cursor: pointer;
-    }
-
-    .toggle input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .toggle .slider {
-      position: absolute;
-      inset: 0;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 11px;
-      transition: all 0.3s ease;
-    }
-
-    .toggle .slider::after {
-      content: '';
-      position: absolute;
-      width: 16px;
-      height: 16px;
-      background: #fff;
-      border-radius: 50%;
-      top: 3px;
-      left: 3px;
-      transition: all 0.3s ease;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-    }
-
-    .toggle input:checked + .slider {
-      background: var(--accent);
-    }
-
-    .toggle input:checked + .slider::after {
-      left: 21px;
-    }
-
-    .status-bar {
-      margin-top: 24px;
-      padding: 12px 14px;
-      border-radius: var(--radius-md);
-      font-size: 12px;
-      font-weight: 500;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .status-bar.ok {
-      background: rgba(52, 211, 153, 0.08);
-      border: 1px solid rgba(52, 211, 153, 0.15);
-      color: var(--success);
-    }
-
-    .status-bar.warn {
-      background: rgba(251, 191, 36, 0.08);
-      border: 1px solid rgba(251, 191, 36, 0.15);
-      color: #fbbf24;
-    }
-
-    .status-bar .dot {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: currentColor;
-    }
-
-    button.save {
-      margin-top: 20px;
-      width: 100%;
-      padding: 10px;
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: var(--radius-sm);
-      font-size: 13px;
-      font-weight: 600;
-      font-family: inherit;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    button.save:hover {
-      background: var(--accent-hover);
-      box-shadow: 0 2px 12px rgba(99, 140, 255, 0.3);
-    }
-
-    button.save:active { transform: scale(0.98); }
-
-    button.test {
-      padding: 8px 14px;
-      background: var(--bg-tertiary);
-      color: var(--text-primary);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      font-size: 12px;
-      font-weight: 500;
-      font-family: inherit;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    button.test:hover {
-      background: var(--bg-hover);
-      border-color: var(--border-focus);
-    }
-
-    button.test:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    button.test.testing {
-      color: var(--text-secondary);
-    }
-
-    .hint {
-      margin-top: 6px;
-      font-size: 11px;
-      color: var(--text-tertiary);
-      line-height: 1.4;
-    }
-
-    .hint.ok { color: var(--success); }
-    .hint.error { color: #f87171; }
+    /* toggles */
+    .behavior { padding: 4px 16px 16px; flex: none; border-top: 1px solid var(--line); }
+    .sw { display: flex; align-items: center; gap: 10px; padding: 9px 0; font-size: 13px; }
+    .sw .ic { width: 16px; color: var(--accent-2); flex: none; text-align: center; }
+    .sw .lbl { flex: 1; }
+    .sw .lbl small { display: block; color: var(--faint); font-size: 10.5px; }
+    .sw .track { width: 36px; height: 20px; border-radius: 999px; background: var(--surface-3);
+      border: 1px solid var(--line); position: relative; flex: none; cursor: pointer; transition: background .2s; }
+    .sw .track.on { background: var(--accent); border-color: transparent; }
+    .sw .track i { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+      background: #fff; transition: left .2s; }
+    .sw .track.on i { left: 18px; }
   </style>
 </head>
 <body>
-  <h1>Settings</h1>
-
-  <div class="section-label">API Keys</div>
-
-  <div class="field">
-    <label>Anthropic API Key</label>
-    <input type="password" id="anthropicApiKey" placeholder="sk-ant-...">
+  <div class="pop-h">
+    <svg class="gem" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2L22 12L12 22L2 12Z" fill="#638cff"/><path d="M12 2L17 7L12 12L7 7Z" fill="rgba(255,255,255,0.25)"/></svg>
+    <span class="t">Clicky</span>
+    <span class="spacer"></span>
+    <span class="live" id="liveDot"><i></i><span id="liveText">connected</span></span>
+    <button class="chat-link" id="openChat">Open chat ›</button>
+    <button class="winx" id="closePopover" title="Close to tray">✕</button>
   </div>
 
-  <div class="field">
-    <label>OpenAI API Key</label>
-    <input type="password" id="openaiApiKey" placeholder="sk-... (Whisper transcription + TTS)">
+  <div class="senses">
+    <div class="sense"><div class="k">LLM</div><div class="v" id="glanceLlm">—</div><div class="s" id="glanceLlmSub"></div></div>
+    <div class="sense"><div class="k">STT</div><div class="v" id="glanceStt">—</div><div class="s" id="glanceSttSub"></div></div>
+    <div class="sense"><div class="k">TTS</div><div class="v" id="glanceTts">—</div><div class="s" id="glanceTtsSub"></div></div>
   </div>
 
-  <div class="field">
-    <label>OpenRouter API Key</label>
-    <input type="password" id="openrouterApiKey" placeholder="sk-or-... (300+ models)">
-  </div>
+  <div class="scroll">
+    <div class="rows">
+      <div class="grp-label">Engines</div>
 
-  <div class="field">
-    <label>Google Gemini API Key</label>
-    <input type="password" id="geminiApiKey" placeholder="AIza... (Gemini vision models)">
-  </div>
+      <!-- LLM -->
+      <div class="arow" data-acc>
+        <button class="top"><span class="ic">◆</span><span class="nm">LLM</span><span class="val"><span class="vt" id="valLlm">—</span><span class="car">▾</span></span></button>
+        <div class="body">
+          <div class="nest">
+            <div class="nlabel">Provider</div>
+            <div class="seg c4" id="segProvider">
+              <button data-value="anthropic">Anthropic</button>
+              <button data-value="openai">OpenAI</button>
+              <button data-value="openrouter">Router</button>
+              <button data-value="gemini">Gemini</button>
+            </div>
 
-  <div class="field">
-    <label>AssemblyAI API Key</label>
-    <input type="password" id="assemblyaiApiKey" placeholder="Voice transcription">
-  </div>
+            <div class="nlabel">Models · <b id="modelProviderLabel">Anthropic</b></div>
+            <div id="claudeModelGroup">
+              <select id="claudeModel">
+                <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (latest)</option>
+                <option value="claude-opus-4-6">Claude Opus 4.6 (smartest)</option>
+                <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</option>
+                <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (fastest)</option>
+              </select>
+            </div>
+            <div id="openaiModelGroup" style="display:none">
+              <select id="openaiModel">
+                <option value="gpt-5.4">GPT-5.4 (most capable)</option>
+                <option value="gpt-5.4-mini">GPT-5.4 Mini (fast + cheap)</option>
+                <option value="gpt-5.4-nano">GPT-5.4 Nano (cheapest)</option>
+                <option value="gpt-4.1">GPT-4.1</option>
+                <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
+                <option value="gpt-4.1-nano">GPT-4.1 Nano</option>
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="gpt-4o-mini">GPT-4o Mini</option>
+              </select>
+            </div>
+            <div id="openrouterModelGroup" style="display:none">
+              <input type="text" id="openrouterModel" placeholder="e.g. anthropic/claude-sonnet-4-5">
+            </div>
+            <div id="geminiModelGroup" style="display:none">
+              <select id="geminiModel"></select>
+              <div class="hint" id="geminiModelHint">Test the key to load models.</div>
+              <input type="text" id="geminiBaseUrl" placeholder="Base URL (optional)" style="margin-top:8px">
+              <button type="button" class="test" id="testGemini">Test API connection</button>
+              <div class="hint" id="testGeminiResult"></div>
+            </div>
 
-  <div class="field">
-    <label>Groq API Key</label>
-    <input type="password" id="groqApiKey" placeholder="gsk-... (Whisper STT, default provider)">
-  </div>
+            <div id="reasoningGroup" style="display:none">
+              <div class="nlabel">Reasoning · <b id="reasoningProviderLabel">Gemini</b></div>
+              <div class="seg c4" id="segOpenaiReasoning" style="display:none">
+                <button data-value="off">Off</button>
+                <button data-value="low">Low</button>
+                <button data-value="medium">Med</button>
+                <button data-value="high">High</button>
+              </div>
+              <div class="seg c5" id="segGeminiReasoning" style="display:none">
+                <button data-value="off">Off</button>
+                <button data-value="low">Low</button>
+                <button data-value="medium">Med</button>
+                <button data-value="high">High</button>
+                <button data-value="default">Auto</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-  <div class="field">
-    <label>ElevenLabs API Key</label>
-    <input type="password" id="elevenlabsApiKey" placeholder="Text-to-speech">
-  </div>
+      <!-- STT -->
+      <div class="arow" data-acc>
+        <button class="top"><span class="ic">🎤</span><span class="nm">Speech-to-text<span class="ab">STT</span></span><span class="val"><span class="vt" id="valStt">—</span><span class="car">▾</span></span></button>
+        <div class="body">
+          <div class="nest">
+            <div class="nlabel">Engine</div>
+            <div class="seg c4" id="segStt">
+              <button data-value="groq">Groq</button>
+              <button data-value="openai">Whisper</button>
+              <button data-value="assemblyai">Assembly</button>
+              <button data-value="whisper-local">Local</button>
+            </div>
+            <div id="groqSttGroup">
+              <div class="nlabel">Model · <b>Groq</b></div>
+              <select id="groqSttModel"></select>
+              <input type="text" id="groqBaseUrl" placeholder="Base URL" style="margin-top:8px">
+              <button type="button" class="test" id="testGroq">Test API Key</button>
+              <div class="hint" id="testGroqResult"></div>
+              <div class="hint" id="groqSttModelHint"></div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-  <div class="section-label">Proxy</div>
+      <!-- TTS -->
+      <div class="arow" data-acc>
+        <button class="top"><span class="ic">🔊</span><span class="nm">Text-to-speech<span class="ab">TTS</span></span><span class="val"><span class="vt" id="valTts">—</span><span class="car">▾</span></span></button>
+        <div class="body">
+          <div class="nest">
+            <div class="nlabel">Engine</div>
+            <div class="seg c5" id="segTts">
+              <button data-value="off">Off</button>
+              <button data-value="local">Win</button>
+              <button data-value="kokoro">Kokoro</button>
+              <button data-value="openai">OpenAI</button>
+              <button data-value="elevenlabs">11L</button>
+            </div>
+            <div id="kokoroGroup" style="display:none">
+              <div class="nlabel">Voice · <b>Kokoro</b></div>
+              <select id="kokoroVoice">
+                <optgroup label="American · Female">
+                  <option value="af_heart">Heart (recommended)</option>
+                  <option value="af_alloy">Alloy</option>
+                  <option value="af_aoede">Aoede</option>
+                  <option value="af_bella">Bella</option>
+                  <option value="af_jessica">Jessica</option>
+                  <option value="af_kore">Kore</option>
+                  <option value="af_nicole">Nicole</option>
+                  <option value="af_nova">Nova</option>
+                  <option value="af_river">River</option>
+                  <option value="af_sarah">Sarah</option>
+                  <option value="af_sky">Sky</option>
+                </optgroup>
+                <optgroup label="American · Male">
+                  <option value="am_adam">Adam</option>
+                  <option value="am_echo">Echo</option>
+                  <option value="am_eric">Eric</option>
+                  <option value="am_fenrir">Fenrir</option>
+                  <option value="am_liam">Liam</option>
+                  <option value="am_michael">Michael</option>
+                  <option value="am_onyx">Onyx</option>
+                  <option value="am_puck">Puck</option>
+                  <option value="am_santa">Santa</option>
+                </optgroup>
+                <optgroup label="British · Female">
+                  <option value="bf_alice">Alice</option>
+                  <option value="bf_emma">Emma</option>
+                  <option value="bf_isabella">Isabella</option>
+                  <option value="bf_lily">Lily</option>
+                </optgroup>
+                <optgroup label="British · Male">
+                  <option value="bm_daniel">Daniel</option>
+                  <option value="bm_fable">Fable</option>
+                  <option value="bm_george">George</option>
+                  <option value="bm_lewis">Lewis</option>
+                </optgroup>
+              </select>
+              <div class="nlabel">Speed · <span id="kokoroSpeedValue">1.0×</span></div>
+              <input type="range" id="kokoroSpeed" min="0.5" max="2" step="0.1" value="1">
+              <div class="nlabel">Quality</div>
+              <select id="kokoroQuality">
+                <option value="fast">Fast (lower latency)</option>
+                <option value="best">Best (slower on CPU)</option>
+              </select>
+            </div>
+            <div class="hint" id="ttsHint" style="margin-top:10px"></div>
+          </div>
+        </div>
+      </div>
 
-  <div class="toggle-row">
-    <label>Use API proxy</label>
-    <label class="toggle">
-      <input type="checkbox" id="useProxy">
-      <span class="slider"></span>
-    </label>
-  </div>
+      <div class="grp-label">Connections</div>
 
-  <div class="field">
-    <label>Proxy URL</label>
-    <input type="text" id="proxyUrl" placeholder="https://your-worker.workers.dev">
-  </div>
+      <!-- API keys -->
+      <div class="arow" data-acc>
+        <button class="top"><span class="ic">⚿</span><span class="nm">API keys</span><span class="val"><span class="vt" id="valKeys">—</span><span class="car">▾</span></span></button>
+        <div class="body">
+          <div class="nlabel" style="margin-top:2px">AI providers</div>
+          <div class="krow"><div class="kmeta"><span class="svc">Anthropic</span></div><input type="password" id="anthropicApiKey" placeholder="sk-ant-…"></div>
+          <div class="krow"><div class="kmeta"><span class="svc">OpenAI</span></div><input type="password" id="openaiApiKey" placeholder="sk-…"></div>
+          <div class="krow"><div class="kmeta"><span class="svc">OpenRouter</span></div><input type="password" id="openrouterApiKey" placeholder="sk-or-…"></div>
+          <div class="krow"><div class="kmeta"><span class="svc">Google</span></div><input type="password" id="geminiApiKey" placeholder="AIza…"></div>
+          <div class="nlabel">Voice services</div>
+          <div class="krow"><div class="kmeta"><span class="svc">Groq</span><span class="tag">speech-to-text</span></div><input type="password" id="groqApiKey" placeholder="gsk-…"></div>
+          <div class="krow"><div class="kmeta"><span class="svc">AssemblyAI</span><span class="tag">speech-to-text</span></div><input type="password" id="assemblyaiApiKey" placeholder="key"></div>
+          <div class="krow"><div class="kmeta"><span class="svc">ElevenLabs</span><span class="tag">text-to-speech</span></div><input type="password" id="elevenlabsApiKey" placeholder="key"></div>
+          <div class="nlabel">Proxy</div>
+          <input type="text" id="proxyUrl" placeholder="https://your-worker.workers.dev">
+        </div>
+      </div>
 
-  <div class="section-label">Voice</div>
-
-  <div class="field">
-    <label>Push-to-Talk Hotkey</label>
-    <select id="pushToTalkHotkey">
-      <option value="Ctrl+Shift">Ctrl + Shift + Space</option>
-      <option value="Ctrl+Alt">Ctrl + Alt + Space</option>
-      <option value="Alt+Shift">Alt + Shift + Space</option>
-      <option value="Super+Shift">Win + Shift + Space</option>
-    </select>
-  </div>
-
-  <div class="field">
-    <label>Transcription Provider</label>
-    <select id="transcriptionProvider">
-      <option value="groq">Groq Whisper (cloud, default)</option>
-      <option value="openai">OpenAI Whisper (cloud)</option>
-      <option value="assemblyai">AssemblyAI (cloud)</option>
-      <option value="whisper-local">Whisper Local (offline)</option>
-    </select>
-  </div>
-
-  <div id="groqSttGroup">
-    <div class="field">
-      <label>Groq Base URL</label>
-      <input type="text" id="groqBaseUrl" placeholder="https://api.groq.com/openai/v1">
+      <!-- Hotkey -->
+      <div class="arow" data-acc>
+        <button class="top"><span class="ic">⌨</span><span class="nm">Push-to-talk</span><span class="val"><span class="vt" id="valHotkey">—</span><span class="car">▾</span></span></button>
+        <div class="body">
+          <div class="nest">
+            <div class="nlabel">Hold to talk</div>
+            <select id="pushToTalkHotkey">
+              <option value="Ctrl+Shift">Ctrl + Shift + Space</option>
+              <option value="Ctrl+Alt">Ctrl + Alt + Space</option>
+              <option value="Alt+Shift">Alt + Shift + Space</option>
+              <option value="Super+Shift">Win + Shift + Space</option>
+            </select>
+          </div>
+        </div>
+      </div>
     </div>
-
-    <div class="field">
-      <label>Groq Model</label>
-      <select id="groqSttModel"></select>
-      <div class="hint" id="groqSttModelHint">Click "Test API Key" to load available models.</div>
-    </div>
-
-    <div class="field">
-      <button type="button" class="test" id="testGroq">Test API Key</button>
-      <div class="hint" id="testGroqResult"></div>
-    </div>
   </div>
 
-  <div class="field">
-    <label>Default Voice</label>
-    <select id="defaultVoice">
-      <option value="off">Off (text only)</option>
-      <option value="local">Windows Voice (offline, free)</option>
-      <option value="openai">OpenAI Voice (cloud, natural)</option>
-      <option value="elevenlabs">ElevenLabs Voice (cloud, premium)</option>
-    </select>
+  <div class="behavior">
+    <div class="sw"><span class="ic">⇧</span><span class="lbl">Always on top</span><span class="track" id="alwaysOnTop"><i></i></span></div>
+    <div class="sw"><span class="ic">✷</span><span class="lbl">Cursor buddy<small>blue glow follows the mouse</small></span><span class="track" id="cursorBuddyEnabled"><i></i></span></div>
+    <div class="sw"><span class="ic">⛨</span><span class="lbl">HIPAA mode<small>local processing only</small></span><span class="track" id="hipaaMode"><i></i></span></div>
   </div>
-
-  <div class="section-label">AI Provider</div>
-
-  <div class="field">
-    <label>Provider</label>
-    <select id="aiProvider">
-      <option value="anthropic">Anthropic (Claude)</option>
-      <option value="openai">OpenAI (GPT)</option>
-      <option value="openrouter">OpenRouter (300+ models)</option>
-      <option value="gemini">Google (Gemini)</option>
-    </select>
-  </div>
-
-  <div class="field" id="claudeModelGroup">
-    <label>Claude Model</label>
-    <select id="claudeModel">
-      <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (latest)</option>
-      <option value="claude-opus-4-6">Claude Opus 4.6 (smartest)</option>
-      <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</option>
-      <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (fastest)</option>
-    </select>
-  </div>
-
-  <div class="field" id="openaiModelGroup" style="display:none">
-    <label>OpenAI Model</label>
-    <select id="openaiModel">
-      <option value="gpt-5.4">GPT-5.4 (most capable)</option>
-      <option value="gpt-5.4-mini">GPT-5.4 Mini (fast + cheap)</option>
-      <option value="gpt-5.4-nano">GPT-5.4 Nano (cheapest)</option>
-      <option value="gpt-4.1">GPT-4.1</option>
-      <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
-      <option value="gpt-4.1-nano">GPT-4.1 Nano</option>
-      <option value="gpt-4o">GPT-4o</option>
-      <option value="gpt-4o-mini">GPT-4o Mini</option>
-    </select>
-  </div>
-
-  <div class="field" id="openrouterModelGroup" style="display:none">
-    <label>OpenRouter Model</label>
-    <input type="text" id="openrouterModel" placeholder="e.g. anthropic/claude-sonnet-4-5, google/gemini-2.5-pro">
-  </div>
-
-  <div id="geminiModelGroup" style="display:none">
-    <div class="field">
-      <label>Gemini Base URL</label>
-      <input type="text" id="geminiBaseUrl" placeholder="https://generativelanguage.googleapis.com">
-    </div>
-
-    <div class="field">
-      <label>Gemini Model</label>
-      <select id="geminiModel"></select>
-      <div class="hint" id="geminiModelHint">Click "Test API connection" to load available models.</div>
-    </div>
-
-    <div class="field">
-      <label>Reasoning</label>
-      <select id="geminiReasoning">
-        <option value="default">Default (model decides)</option>
-        <option value="off">Off (fastest)</option>
-        <option value="low">Low</option>
-        <option value="medium">Medium</option>
-        <option value="high">High (most thorough)</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label>Temperature</label>
-      <input type="number" id="geminiTemperature" min="0" max="2" step="0.1" placeholder="1">
-    </div>
-
-    <div class="field">
-      <button type="button" class="test" id="testGemini">Test API connection</button>
-      <div class="hint" id="testGeminiResult"></div>
-    </div>
-  </div>
-
-  <div class="section-label">Window</div>
-
-  <div class="toggle-row">
-    <label>Always on top (chat stays visible)</label>
-    <label class="toggle">
-      <input type="checkbox" id="alwaysOnTop">
-      <span class="slider"></span>
-    </label>
-  </div>
-
-  <div class="toggle-row">
-    <label>Cursor buddy (blue glow follows mouse)</label>
-    <label class="toggle">
-      <input type="checkbox" id="cursorBuddyEnabled">
-      <span class="slider"></span>
-    </label>
-  </div>
-
-  <div class="section-label">Compliance</div>
-
-  <div class="toggle-row">
-    <label>HIPAA Mode (local processing only)</label>
-    <label class="toggle">
-      <input type="checkbox" id="hipaaMode">
-      <span class="slider"></span>
-    </label>
-  </div>
-
-  <div id="status" class="status-bar warn">
-    <div class="dot"></div>
-    <span>Enter your AI API key to get started</span>
-  </div>
-
-  <button class="save" id="save">Save Settings</button>
 
   <script>
     const GROQ_DEFAULT_BASE_URL = 'https://api.groq.com/openai/v1';
     const GROQ_DEFAULT_STT_MODEL = 'whisper-large-v3-turbo';
     const GROQ_MODEL_LIST_TTL_MS = 5 * 24 * 60 * 60 * 1000;
-
     const GEMINI_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
     const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash';
 
-    const fields = [
-      'anthropicApiKey', 'openaiApiKey', 'openrouterApiKey', 'assemblyaiApiKey', 'groqApiKey', 'elevenlabsApiKey',
-      'geminiApiKey',
-      'proxyUrl', 'useProxy', 'pushToTalkHotkey', 'transcriptionProvider',
-      'aiProvider', 'claudeModel', 'openaiModel', 'openrouterModel',
-      'geminiBaseUrl', 'geminiModel', 'geminiReasoning', 'geminiTemperature',
-      'groqBaseUrl', 'groqSttModel',
-      'alwaysOnTop', 'cursorBuddyEnabled', 'hipaaMode'
-    ];
+    const $ = (id) => document.getElementById(id);
+    let S = {}; // settings cache
 
-    function renderGroqModelDropdown(savedModel, cachedList) {
-      const select = document.getElementById('groqSttModel');
-      const hint = document.getElementById('groqSttModelHint');
-      const seen = new Set();
-      const options = [];
-      const push = (id) => {
-        if (!id || seen.has(id)) return;
-        seen.add(id);
-        options.push(id);
-      };
-      push(GROQ_DEFAULT_STT_MODEL);
-      push(savedModel);
-      for (const id of (cachedList || [])) push(id);
+    const PROVIDER_LABEL = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini' };
+    const MODELHOST_LABEL = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini' };
+    const STT_LABEL = { groq: 'Groq', openai: 'Whisper', assemblyai: 'AssemblyAI', 'whisper-local': 'Local' };
+    const TTS_LABEL = { off: 'Off', local: 'Windows', kokoro: 'Kokoro', openai: 'OpenAI', elevenlabs: 'ElevenLabs' };
 
-      select.innerHTML = '';
-      for (const id of options) {
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = id;
-        if (id === savedModel) opt.selected = true;
-        select.appendChild(opt);
-      }
-
-      const settings = window.__clickySettings || {};
-      const fetchedAt = settings.groqSttModelListFetchedAt || 0;
-      if (fetchedAt) {
-        const days = Math.floor((Date.now() - fetchedAt) / (24 * 60 * 60 * 1000));
-        const label = days <= 0 ? 'today' : days === 1 ? '1 day ago' : `${days} days ago`;
-        hint.className = 'hint';
-        hint.textContent = `Updated ${label} · click "Test API Key" to refresh.`;
-      } else {
-        hint.className = 'hint';
-        hint.textContent = 'Click "Test API Key" to load available models.';
-      }
+    function save(key, value) {
+      S[key] = value;
+      window.clicky.setSetting(key, value);
     }
 
-    function renderGeminiModelDropdown(savedModel, cachedList) {
-      const select = document.getElementById('geminiModel');
-      const seen = new Set();
-      const options = [];
-      const push = (id) => {
-        if (!id || seen.has(id)) return;
-        seen.add(id);
-        options.push(id);
-      };
-      push(GEMINI_DEFAULT_MODEL);
-      push(savedModel);
-      for (const id of (cachedList || [])) push(id);
-
-      select.innerHTML = '';
-      for (const id of options) {
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = id;
-        if (id === savedModel) opt.selected = true;
-        select.appendChild(opt);
-      }
-
-      const settings = window.__clickySettings || {};
-      const hint = document.getElementById('geminiModelHint');
-      const fetchedAt = settings.geminiModelListFetchedAt || 0;
-      hint.className = 'hint';
-      if (fetchedAt) {
-        const days = Math.floor((Date.now() - fetchedAt) / (24 * 60 * 60 * 1000));
-        const label = days <= 0 ? 'today' : days === 1 ? '1 day ago' : `${days} days ago`;
-        hint.textContent = `Updated ${label} · click "Test API connection" to refresh.`;
-      } else {
-        hint.textContent = 'Click "Test API connection" to load available models.';
-      }
-    }
-
-    function setTestGeminiResult(message, kind) {
-      const el = document.getElementById('testGeminiResult');
-      el.className = 'hint ' + (kind || '');
-      el.textContent = message;
-    }
-
-    function updateSttProviderUI() {
-      const provider = document.getElementById('transcriptionProvider').value;
-      document.getElementById('groqSttGroup').style.display = provider === 'groq' ? '' : 'none';
-    }
-
-    function setTestGroqResult(message, kind) {
-      const el = document.getElementById('testGroqResult');
-      el.className = 'hint ' + (kind || '');
-      el.textContent = message;
-    }
-
-    window.clicky.getSettings().then((settings) => {
-      window.__clickySettings = settings;
-      fields.forEach((key) => {
-        const el = document.getElementById(key);
-        if (!el) return;
-        if (el.type === 'checkbox') el.checked = !!settings[key];
-        else el.value = settings[key] || '';
+    // ---- segmented control helper ----
+    function setupSegmented(id, onPick) {
+      const box = $(id);
+      box.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-value]');
+        if (!btn) return;
+        markSegmented(id, btn.dataset.value);
+        onPick(btn.dataset.value);
       });
+    }
+    function markSegmented(id, value) {
+      $(id).querySelectorAll('button[data-value]').forEach((b) => {
+        b.classList.toggle('on', b.dataset.value === value);
+      });
+    }
 
-      // Load defaultVoice from ttsEnabled + ttsProvider
-      const voiceSelect = document.getElementById('defaultVoice');
-      if (!settings.ttsEnabled) {
-        voiceSelect.value = 'off';
-      } else {
-        voiceSelect.value = settings.ttsProvider || 'local';
+    // ---- dynamic model dropdowns (ported) ----
+    function renderGroqModelDropdown(savedModel, cachedList) {
+      const select = $('groqSttModel');
+      const seen = new Set(); const options = [];
+      const push = (id) => { if (id && !seen.has(id)) { seen.add(id); options.push(id); } };
+      push(GROQ_DEFAULT_STT_MODEL); push(savedModel);
+      for (const id of (cachedList || [])) push(id);
+      select.innerHTML = '';
+      for (const id of options) {
+        const opt = document.createElement('option');
+        opt.value = id; opt.textContent = id;
+        if (id === savedModel) opt.selected = true;
+        select.appendChild(opt);
       }
-
-      renderGroqModelDropdown(
-        settings.groqSttModel || GROQ_DEFAULT_STT_MODEL,
-        settings.groqSttModelList || []
-      );
-      renderGeminiModelDropdown(
-        settings.geminiModel || GEMINI_DEFAULT_MODEL,
-        settings.geminiModelList || []
-      );
-      updateProviderUI();
-      updateSttProviderUI();
-      updateStatus(settings);
-
-      // Auto-refresh the model list on settings open if the cache is
-      // missing or older than 5 days. Silent, non-blocking.
-      const apiKey = settings.groqApiKey;
-      const baseUrl = settings.groqBaseUrl || GROQ_DEFAULT_BASE_URL;
-      const fetchedAt = settings.groqSttModelListFetchedAt || 0;
-      const stale = !fetchedAt || (Date.now() - fetchedAt) > GROQ_MODEL_LIST_TTL_MS;
-      if (apiKey && stale) {
-        window.clicky.refreshGroqModelList(apiKey, baseUrl).then(async (res) => {
-          if (res && res.ok) {
-            const fresh = await window.clicky.getSettings();
-            window.__clickySettings = fresh;
-            renderGroqModelDropdown(
-              fresh.groqSttModel || GROQ_DEFAULT_STT_MODEL,
-              fresh.groqSttModelList || []
-            );
-          }
-        }).catch(() => { /* ignore — non-fatal */ });
+      const fetchedAt = S.groqSttModelListFetchedAt || 0;
+      const hint = $('groqSttModelHint');
+      if (fetchedAt) {
+        const days = Math.floor((Date.now() - fetchedAt) / 86400000);
+        hint.textContent = `Updated ${days <= 0 ? 'today' : days === 1 ? '1 day ago' : days + ' days ago'} · re-test to refresh.`;
+      } else { hint.textContent = 'Test the key to load models.'; }
+    }
+    function renderGeminiModelDropdown(savedModel, cachedList) {
+      const select = $('geminiModel');
+      const seen = new Set(); const options = [];
+      const push = (id) => { if (id && !seen.has(id)) { seen.add(id); options.push(id); } };
+      push(GEMINI_DEFAULT_MODEL); push(savedModel);
+      for (const id of (cachedList || [])) push(id);
+      select.innerHTML = '';
+      for (const id of options) {
+        const opt = document.createElement('option');
+        opt.value = id; opt.textContent = id;
+        if (id === savedModel) opt.selected = true;
+        select.appendChild(opt);
       }
-    });
+      const fetchedAt = S.geminiModelListFetchedAt || 0;
+      const hint = $('geminiModelHint');
+      hint.textContent = fetchedAt
+        ? `Updated ${(() => { const d = Math.floor((Date.now() - fetchedAt) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day ago' : d + ' days ago'; })()} · re-test to refresh.`
+        : 'Test the key to load models.';
+    }
+
+    // ---- UI sync ----
+    function currentLlmModel() {
+      const p = S.aiProvider || 'anthropic';
+      if (p === 'openai') return S.openaiModel;
+      if (p === 'openrouter') return S.openrouterModel;
+      if (p === 'gemini') return S.geminiModel;
+      return S.claudeModel;
+    }
+    function shortModel(m) { return (m || '').replace(/^(anthropic|openai|google|meta-llama|deepseek|mistralai)\//, ''); }
 
     function updateProviderUI() {
-      const provider = document.getElementById('aiProvider').value;
-      document.getElementById('claudeModelGroup').style.display = provider === 'anthropic' ? '' : 'none';
-      document.getElementById('openaiModelGroup').style.display = provider === 'openai' ? '' : 'none';
-      document.getElementById('openrouterModelGroup').style.display = provider === 'openrouter' ? '' : 'none';
-      document.getElementById('geminiModelGroup').style.display = provider === 'gemini' ? '' : 'none';
+      const p = S.aiProvider || 'anthropic';
+      $('claudeModelGroup').style.display = p === 'anthropic' ? '' : 'none';
+      $('openaiModelGroup').style.display = p === 'openai' ? '' : 'none';
+      $('openrouterModelGroup').style.display = p === 'openrouter' ? '' : 'none';
+      $('geminiModelGroup').style.display = p === 'gemini' ? '' : 'none';
+      $('modelProviderLabel').textContent = MODELHOST_LABEL[p] || p;
+      // reasoning visible only for openai + gemini
+      const showReason = p === 'openai' || p === 'gemini';
+      $('reasoningGroup').style.display = showReason ? '' : 'none';
+      $('segOpenaiReasoning').style.display = p === 'openai' ? '' : 'none';
+      $('segGeminiReasoning').style.display = p === 'gemini' ? '' : 'none';
+      $('reasoningProviderLabel').textContent = MODELHOST_LABEL[p] || p;
     }
+    function updateSttUI() {
+      $('groqSttGroup').style.display = (S.transcriptionProvider || 'groq') === 'groq' ? '' : 'none';
+    }
+    function ttsValue() { return !S.ttsEnabled ? 'off' : (S.ttsProvider || 'local'); }
+    function updateTtsUI() {
+      const v = ttsValue();
+      $('kokoroGroup').style.display = v === 'kokoro' ? '' : 'none';
+      const needsKey = { openai: 'OpenAI', elevenlabs: 'ElevenLabs' };
+      $('ttsHint').textContent = needsKey[v] ? `Needs your ${needsKey[v]} API key (under API keys).` : '';
+    }
+    function updateGlance() {
+      const p = S.aiProvider || 'anthropic';
+      $('glanceLlm').textContent = PROVIDER_LABEL[p] || p;
+      $('glanceLlmSub').textContent = shortModel(currentLlmModel());
+      const stt = S.transcriptionProvider || 'groq';
+      $('glanceStt').textContent = STT_LABEL[stt] || stt;
+      $('glanceSttSub').textContent = stt === 'groq' ? shortModel(S.groqSttModel) : '';
+      const tv = ttsValue();
+      $('glanceTts').textContent = TTS_LABEL[tv] || tv;
+      $('glanceTtsSub').textContent = tv === 'kokoro' ? (S.kokoroVoice || '').replace(/^[ab][fm]_/, '') : '';
+      // row value summaries
+      $('valLlm').textContent = (PROVIDER_LABEL[p] || p) + ' · ' + shortModel(currentLlmModel());
+      $('valStt').textContent = (STT_LABEL[stt] || stt) + (stt === 'groq' ? ' · ' + shortModel(S.groqSttModel) : '');
+      $('valTts').textContent = (TTS_LABEL[tv] || tv) + (tv === 'kokoro' ? ' · ' + (S.kokoroVoice || '').replace(/^[ab][fm]_/, '') : '');
+      const keyCount = ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','groqApiKey','assemblyaiApiKey','elevenlabsApiKey'].filter((k) => S[k]).length;
+      $('valKeys').textContent = keyCount + ' connected';
+      $('valHotkey').textContent = (S.pushToTalkHotkey || 'Ctrl+Shift').replace('Super', 'Win').replace('+', ' + ') + ' + Space';
+      // connected indicator
+      const keyMap = { anthropic: S.anthropicApiKey, openai: S.openaiApiKey, openrouter: S.openrouterApiKey, gemini: S.geminiApiKey };
+      const connected = !!keyMap[p] || (S.useProxy && S.proxyUrl);
+      $('liveDot').className = connected ? 'live' : 'live off';
+      $('liveText').textContent = connected ? 'connected' : 'no key yet';
+    }
+    function refreshAll() { updateProviderUI(); updateSttUI(); updateTtsUI(); updateGlance(); }
 
-    document.getElementById('aiProvider').addEventListener('change', updateProviderUI);
-    updateProviderUI();
-    document.getElementById('transcriptionProvider').addEventListener('change', updateSttProviderUI);
-    updateSttProviderUI();
+    // ---- load ----
+    window.clicky.getSettings().then((settings) => {
+      S = settings || {};
 
-    document.getElementById('hipaaMode').addEventListener('change', (e) => {
-      if (e.target.checked) {
-        document.getElementById('transcriptionProvider').value = 'whisper-local';
-        document.getElementById('ttsProvider').value = 'local';
-        updateSttProviderUI();
+      // text/password/number/select fields that map 1:1
+      ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','assemblyaiApiKey','groqApiKey','elevenlabsApiKey',
+       'proxyUrl','openrouterModel','geminiBaseUrl','groqBaseUrl','pushToTalkHotkey',
+       'claudeModel','openaiModel','kokoroQuality'].forEach((k) => { if ($(k)) $(k).value = S[k] || ''; });
+
+      $('kokoroSpeed').value = S.kokoroSpeed || 1;
+      $('kokoroSpeedValue').textContent = (parseFloat(S.kokoroSpeed) || 1).toFixed(1) + '×';
+
+      markSegmented('segProvider', S.aiProvider || 'anthropic');
+      markSegmented('segStt', S.transcriptionProvider || 'groq');
+      markSegmented('segTts', ttsValue());
+      markSegmented('segOpenaiReasoning', S.openaiReasoning || 'off');
+      markSegmented('segGeminiReasoning', S.geminiReasoning || 'default');
+
+      renderGroqModelDropdown(S.groqSttModel || GROQ_DEFAULT_STT_MODEL, S.groqSttModelList || []);
+      renderGeminiModelDropdown(S.geminiModel || GEMINI_DEFAULT_MODEL, S.geminiModelList || []);
+
+      // toggles
+      ['alwaysOnTop','cursorBuddyEnabled','hipaaMode'].forEach((k) => $(k).classList.toggle('on', !!S[k]));
+
+      refreshAll();
+
+      // auto-refresh Groq model list if stale
+      const apiKey = S.groqApiKey;
+      const baseUrl = S.groqBaseUrl || GROQ_DEFAULT_BASE_URL;
+      const fetchedAt = S.groqSttModelListFetchedAt || 0;
+      if (apiKey && (!fetchedAt || (Date.now() - fetchedAt) > GROQ_MODEL_LIST_TTL_MS)) {
+        window.clicky.refreshGroqModelList(apiKey, baseUrl).then(async (res) => {
+          if (res && res.ok) {
+            S = await window.clicky.getSettings();
+            renderGroqModelDropdown(S.groqSttModel || GROQ_DEFAULT_STT_MODEL, S.groqSttModelList || []);
+            updateGlance();
+          }
+        }).catch(() => {});
       }
     });
 
-    document.getElementById('testGroq').addEventListener('click', async () => {
-      const btn = document.getElementById('testGroq');
-      const apiKey = document.getElementById('groqApiKey').value.trim();
-      const baseUrl = (document.getElementById('groqBaseUrl').value.trim()) || GROQ_DEFAULT_BASE_URL;
-      if (!apiKey) {
-        setTestGroqResult('Enter your Groq API key above first.', 'error');
-        return;
+    // ---- accordion (one open at a time) ----
+    document.querySelectorAll('.arow[data-acc] .top').forEach((top) => {
+      top.addEventListener('click', () => {
+        const row = top.parentElement;
+        const wasOpen = row.classList.contains('open');
+        document.querySelectorAll('.arow[data-acc]').forEach((r) => r.classList.remove('open'));
+        if (!wasOpen) row.classList.add('open');
+      });
+    });
+
+    // ---- segmented wiring ----
+    setupSegmented('segProvider', (v) => { save('aiProvider', v); refreshAll(); });
+    setupSegmented('segStt', (v) => {
+      save('transcriptionProvider', v);
+      if (v === 'whisper-local') { /* offline */ }
+      updateSttUI(); updateGlance();
+    });
+    setupSegmented('segTts', (v) => {
+      if (v === 'off') { save('ttsEnabled', false); }
+      else { save('ttsEnabled', true); save('ttsProvider', v); }
+      updateTtsUI(); updateGlance();
+    });
+    setupSegmented('segOpenaiReasoning', (v) => save('openaiReasoning', v));
+    setupSegmented('segGeminiReasoning', (v) => save('geminiReasoning', v));
+
+    // ---- field listeners (write on change) ----
+    function onChange(id, key, transform) {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener('change', () => { save(key, transform ? transform(el.value) : el.value); updateGlance(); });
+    }
+    ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','assemblyaiApiKey','groqApiKey','elevenlabsApiKey',
+     'proxyUrl','openrouterModel','geminiBaseUrl','groqBaseUrl','pushToTalkHotkey',
+     'claudeModel','openaiModel','geminiModel','groqSttModel','kokoroVoice','kokoroQuality'].forEach((k) => onChange(k, k));
+
+    $('kokoroSpeed').addEventListener('input', () => {
+      const v = parseFloat($('kokoroSpeed').value || '1');
+      $('kokoroSpeedValue').textContent = v.toFixed(1) + '×';
+      save('kokoroSpeed', v);
+    });
+
+    // ---- toggles ----
+    function wireToggle(id, onChange) {
+      $(id).addEventListener('click', () => {
+        const on = !$(id).classList.contains('on');
+        $(id).classList.toggle('on', on);
+        save(id, on);
+        if (onChange) onChange(on);
+      });
+    }
+    wireToggle('alwaysOnTop');
+    wireToggle('cursorBuddyEnabled');
+    wireToggle('hipaaMode', (on) => {
+      if (!on) return;
+      // Force fully-local processing: whisper-local STT + local/Kokoro TTS.
+      save('transcriptionProvider', 'whisper-local');
+      markSegmented('segStt', 'whisper-local');
+      if (ttsValue() !== 'kokoro' && ttsValue() !== 'local') {
+        save('ttsEnabled', true); save('ttsProvider', 'local');
+        markSegmented('segTts', 'local');
       }
-      btn.disabled = true;
-      btn.classList.add('testing');
-      btn.textContent = 'Testing…';
-      setTestGroqResult('Verifying API key…', '');
+      refreshAll();
+    });
+
+    // ---- test buttons (ported) ----
+    $('testGroq').addEventListener('click', async () => {
+      const btn = $('testGroq');
+      const apiKey = $('groqApiKey').value.trim();
+      const baseUrl = $('groqBaseUrl').value.trim() || GROQ_DEFAULT_BASE_URL;
+      if (!apiKey) { setHint('testGroqResult', 'Enter your Groq API key first.', 'error'); return; }
+      btn.disabled = true; btn.textContent = 'Testing…'; setHint('testGroqResult', 'Verifying…', '');
       try {
         const res = await window.clicky.testGroqKey(apiKey, baseUrl);
         if (res && res.ok) {
           const count = (res.models || []).length;
-          setTestGroqResult(`Connected · ${count} Whisper model${count === 1 ? '' : 's'} available.`, 'ok');
-          // Re-render the dropdown with the fresh list
-          const fresh = await window.clicky.getSettings();
-          window.__clickySettings = fresh;
-          renderGroqModelDropdown(
-            document.getElementById('groqSttModel').value || GROQ_DEFAULT_STT_MODEL,
-            fresh.groqSttModelList || []
-          );
-        } else {
-          setTestGroqResult((res && res.error) || 'Test failed.', 'error');
-        }
-      } catch (err) {
-        setTestGroqResult('Test failed: ' + (err && err.message ? err.message : String(err)), 'error');
-      } finally {
-        btn.disabled = false;
-        btn.classList.remove('testing');
-        btn.textContent = 'Test API Key';
-      }
+          setHint('testGroqResult', `Connected · ${count} model${count === 1 ? '' : 's'}.`, 'ok');
+          S = await window.clicky.getSettings();
+          renderGroqModelDropdown($('groqSttModel').value || GROQ_DEFAULT_STT_MODEL, S.groqSttModelList || []);
+        } else { setHint('testGroqResult', (res && res.error) || 'Test failed.', 'error'); }
+      } catch (err) { setHint('testGroqResult', 'Failed: ' + (err.message || err), 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'Test API Key'; }
     });
-
-    document.getElementById('testGemini').addEventListener('click', async () => {
-      const btn = document.getElementById('testGemini');
-      const apiKey = document.getElementById('geminiApiKey').value.trim();
-      const baseUrl = (document.getElementById('geminiBaseUrl').value.trim()) || GEMINI_DEFAULT_BASE_URL;
-      if (!apiKey) {
-        setTestGeminiResult('Enter your Google Gemini API key above first.', 'error');
-        return;
-      }
-      btn.disabled = true;
-      btn.classList.add('testing');
-      btn.textContent = 'Testing…';
-      setTestGeminiResult('Verifying API key…', '');
+    $('testGemini').addEventListener('click', async () => {
+      const btn = $('testGemini');
+      const apiKey = $('geminiApiKey').value.trim();
+      const baseUrl = $('geminiBaseUrl').value.trim() || GEMINI_DEFAULT_BASE_URL;
+      if (!apiKey) { setHint('testGeminiResult', 'Enter your Gemini API key first.', 'error'); return; }
+      btn.disabled = true; btn.textContent = 'Testing…'; setHint('testGeminiResult', 'Verifying…', '');
       try {
         const res = await window.clicky.testGeminiKey(apiKey, baseUrl);
         if (res && res.ok) {
           const count = (res.models || []).length;
-          setTestGeminiResult(`Connected · ${count} model${count === 1 ? '' : 's'} available.`, 'ok');
-          const fresh = await window.clicky.getSettings();
-          window.__clickySettings = fresh;
-          renderGeminiModelDropdown(
-            document.getElementById('geminiModel').value || GEMINI_DEFAULT_MODEL,
-            fresh.geminiModelList || []
-          );
-        } else {
-          setTestGeminiResult((res && res.error) || 'Test failed.', 'error');
-        }
-      } catch (err) {
-        setTestGeminiResult('Test failed: ' + (err && err.message ? err.message : String(err)), 'error');
-      } finally {
-        btn.disabled = false;
-        btn.classList.remove('testing');
-        btn.textContent = 'Test API connection';
-      }
+          setHint('testGeminiResult', `Connected · ${count} model${count === 1 ? '' : 's'}.`, 'ok');
+          S = await window.clicky.getSettings();
+          renderGeminiModelDropdown($('geminiModel').value || GEMINI_DEFAULT_MODEL, S.geminiModelList || []);
+        } else { setHint('testGeminiResult', (res && res.error) || 'Test failed.', 'error'); }
+      } catch (err) { setHint('testGeminiResult', 'Failed: ' + (err.message || err), 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'Test API connection'; }
     });
+    function setHint(id, msg, kind) { const el = $(id); el.className = 'hint ' + (kind || ''); el.textContent = msg; }
 
-    document.getElementById('save').addEventListener('click', async () => {
-      const values = {};
-      fields.forEach((key) => {
-        const el = document.getElementById(key);
-        if (!el) return;
-        values[key] = el.type === 'checkbox' ? el.checked : el.value;
-        window.clicky.setSetting(key, values[key]);
-      });
-
-      // Save defaultVoice as ttsEnabled + ttsProvider
-      const voice = document.getElementById('defaultVoice').value;
-      if (voice === 'off') {
-        window.clicky.setSetting('ttsEnabled', false);
-      } else {
-        window.clicky.setSetting('ttsEnabled', true);
-        window.clicky.setSetting('ttsProvider', voice);
-      }
-      values.ttsEnabled = voice !== 'off';
-      values.ttsProvider = voice === 'off' ? 'local' : voice;
-
-      const status = document.getElementById('status');
-      status.textContent = '';
-      status.className = 'status-bar ok';
-      status.innerHTML = '<div class="dot"></div><span>Settings saved</span>';
-      setTimeout(() => updateStatus(values), 2000);
-    });
-
-    function updateStatus(settings) {
-      const status = document.getElementById('status');
-      const providerLabels = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini' };
-      const keyMap = {
-        anthropic: settings.anthropicApiKey,
-        openai: settings.openaiApiKey,
-        openrouter: settings.openrouterApiKey,
-        gemini: settings.geminiApiKey
-      };
-      const provider = settings.aiProvider || 'anthropic';
-      const hasProxy = settings.useProxy && settings.proxyUrl;
-      const hasKey = !!keyMap[provider];
-      if (hasProxy || hasKey) {
-        status.className = 'status-bar ok';
-        status.innerHTML = '<div class="dot"></div><span>Ready</span>';
-      } else {
-        status.className = 'status-bar warn';
-        const label = providerLabels[provider] || 'AI';
-        status.innerHTML = '<div class="dot"></div><span>Enter your ' + label + ' API key to get started</span>';
-      }
-    }
+    // ---- open chat / close to tray ----
+    $('openChat').addEventListener('click', () => window.clicky.openChat());
+    $('closePopover').addEventListener('click', () => window.clicky.hidePopover());
   </script>
 </body>
 </html>

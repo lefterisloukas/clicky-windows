@@ -99,7 +99,60 @@ TTS makes Clicky speak its responses aloud.
 | Provider | Voice Quality | Latency | Privacy | Key Required |
 |----------|-------------|---------|---------|-------------|
 | **ElevenLabs** | Very natural | Low | Cloud — response text sent to ElevenLabs | Yes |
+| **OpenAI TTS** | Natural | Low | Cloud — response text sent to OpenAI | Yes |
+| **Kokoro** | Very natural | Medium (first reply slower) | Private — nothing leaves your device | No |
 | **Windows SAPI** | Robotic but clear | Very low | Private — nothing leaves your device | No |
+
+### Using Kokoro (No Cloud)
+
+Kokoro is an 82M-parameter open-weight neural TTS model (Apache-2.0). It sounds
+far more natural than Windows SAPI yet runs **entirely on your machine** via
+[kokoro-js](https://www.npmjs.com/package/kokoro-js) — no API key, no server,
+nothing leaves the device. It uses the `onnx-community/Kokoro-82M-v1.0-ONNX`
+weights through `onnxruntime-node` in the main process.
+
+Clicky ships **two model variants** and lets you pick between them in Settings:
+
+| Quality | dtype | First word (CPU) | Notes |
+|---------|-------|------------------|-------|
+| **Fast** (default) | q4 | <1s | ~4× faster on CPU; small quality drop |
+| **Best** | q8 | ~3s | Slightly cleaner; slower to start on CPU |
+
+(Benchmarked on a Ryzen 5 3600: q4 generates faster than real-time, q8 a bit
+slower.) Each variant loads once per session and is cached; generation of each
+sentence overlaps playback of the previous one, so replies play back-to-back
+with no gaps.
+
+**1. Download the model files**
+
+Clicky loads the model from `resources/kokoro/` at the repo root (gitignored, so
+download it separately — packaged builds bundle this folder automatically via
+`extraResource` in `forge.config.ts`). From
+[onnx-community/Kokoro-82M-v1.0-ONNX](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX),
+place the config/tokenizer files and both ONNX weights so the layout is:
+
+```
+resources/kokoro/
+├── config.json
+├── tokenizer.json
+├── tokenizer_config.json
+└── onnx/
+    ├── model_q4.onnx          (~305 MB — the q4 "Fast" variant)
+    └── model_quantized.onnx   (~92 MB — the q8 "Best" variant)
+```
+
+> If you only ever use one quality, you can keep just that variant
+> (`model_q4.onnx` for Fast, `model_quantized.onnx` for Best) — the other is
+> only loaded when its quality is selected. The **voices** ship inside the
+> `kokoro-js` npm package itself, so they need no separate download.
+
+**2. Enable in settings**
+
+1. Open Settings from the tray icon
+2. Set **Default Voice** to "Kokoro (offline, natural)"
+3. Pick a voice (28 American/British voices), adjust **Speed**, and choose a
+   **Quality** (Fast / Best)
+4. Save
 
 ### Setting Up ElevenLabs
 

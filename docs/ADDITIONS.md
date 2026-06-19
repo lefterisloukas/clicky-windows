@@ -8,6 +8,171 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-14
 
+### feat/june14fixes-after-kokoro — logging + TTS-label fixes
+**Time:** ~14:30 (local, UTC+3)
+**Branch:** `feat/june14fixes-after-kokoro` (cut from `feat/kokorotts`)
+**Author:** Claude Code
+
+Small post-Kokoro polish pass. Four independent fixes, all additive:
+
+- **Provider-accurate response log.** `src/main/companion.ts` always logged
+  `[Clicky] Claude response:` regardless of the active provider. Added a
+  `providerLabel()` helper (anthropic → Claude, openai → OpenAI, openrouter →
+  OpenRouter, gemini → Gemini, else the raw id) and the log line now reflects
+  the real provider.
+- **Console arrow mojibake.** The Unicode arrows (`→` / `←`) in log strings
+  rendered as `ΓåÆ` / `ΓåÉ` in the Windows console (code-page mismatch).
+  Replaced them with ASCII `->` / `<-` in `src/main/companion.ts` (4 lines)
+  and `src/main/screenshot.ts` (1 line).
+- **Readable TTS toggle labels.** The chat quick-toggle showed cramped codes
+  `KOK` / `WIN` / `AI` (the `KOK` read as Greek "κοκ" to the user). Changed to
+  full names `Kokoro` / `Windows` / `OpenAI` in
+  `src/renderer/chat/index.html`. (Supersedes the `KOK/WIN/AI` labels noted in
+  the Kokoro entry below.)
+- **Log the transcript text.** `src/main/audio.ts` logged only
+  `Transcript received, length: N`; it now logs the transcript content too:
+  `Transcript received (length N): <text>`.
+
+**Verification**
+- `npx tsc` exits 0.
+
+---
+
+### feat/kokorotts — Kokoro as a local, offline TTS provider
+**Time:** ~13:50 (local, UTC+3)
+**Branch:** `feat/kokorotts` (cut from `develop`)
+**Author:** Claude Code
+
+Added **Kokoro** as a fourth TTS provider alongside ElevenLabs / OpenAI /
+Windows SAPI. Kokoro is an 82M-parameter open-weight neural TTS model
+(Apache-2.0) that sounds far more natural than Windows SAPI yet runs **entirely
+on-device** — no API key, no server, no Python, nothing leaves the machine. It
+strengthens the existing offline/HIPAA story (whisper-local + local TTS). Uses
+[`kokoro-js`](https://www.npmjs.com/package/kokoro-js) (maintained by
+Xenova / Hugging Face) running the `onnx-community/Kokoro-82M-v1.0-ONNX` weights
+through `onnxruntime-node` in the main process. All additions are additive —
+default TTS provider is unchanged.
+
+Deliberately **not** over-engineered: Kokoro's voice list is fixed and baked
+into the model, so there is **no API-key / Test-connection / dynamic-fetch**
+machinery (unlike Groq/Gemini) — just a static dropdown.
+
+**New code**
+- `src/services/tts/kokoro.ts` — `KokoroTTS implements TTSProvider`. The model
+  loads **once per dtype** into a module-level `Map` cache (the TTS factory
+  builds a fresh provider per request — the heavy model must not be; keying by
+  dtype lets the Fast/Best quality toggle swap variants on demand without
+  discarding the one already in memory). Loading is forced **fully offline**
+  (`@huggingface/transformers` `env.allowRemoteModels = false`,
+  `env.localModelPath` → the resources dir, `from_pretrained("kokoro", { dtype,
+  device: "cpu" })`). `speak()` splits long text on sentence boundaries
+  (`MAX_CHARS = 180`, under Kokoro's ~510-token phoneme limit) and **pipelines**
+  generation with playback — it kicks off generation of the *next* chunk before
+  playing the current one, so CPU inference overlaps playback instead of stacking
+  after it (removes the gaps between sentences). Playback reuses the PowerShell
+  `MediaPlayer` pattern from the OpenAI/ElevenLabs providers, with exact duration
+  from the raw 24 kHz samples instead of the MP3 byte-estimate hack. `stop()`
+  sets a flag (checked between chunks) and kills the current player process.
+
+**Wiring**
+- `src/services/tts/interface.ts` — added `case "kokoro"` to the factory
+  (lazy `require("./kokoro")`, passes `kokoroVoice` + `Number(kokoroSpeed)` +
+  `kokoroQuality`).
+- `src/main/settings.ts` — extended `ttsProvider` union to include `"kokoro"`;
+  added `kokoroVoice` (default `af_heart`), `kokoroSpeed` (default `1.0`), and
+  `kokoroQuality` (`"fast"` | `"best"`, default `"fast"`).
+- `src/main/companion.ts` — **no change**; `createTTSProvider()` already routes
+  by `ttsProvider` and the spoken text already has POINT tags stripped.
+
+**Model assets + packaging**
+- `package.json` — added `kokoro-js` (`^1.2.1`); it pulls in
+  `@huggingface/transformers` (which includes the native `onnxruntime-node`
+  binary).
+- `forge.config.ts` — `extraResource: ["resources/kokoro"]` bundles the model
+  folder into packaged builds (lands at `process.resourcesPath/kokoro`, resolved
+  the same way `whisper-local.ts` resolves its model). The existing
+  `@electron-forge/plugin-auto-unpack-natives` handles the onnxruntime `.node`
+  binary.
+- `.gitignore` — ignore `resources/kokoro/` (weights downloaded separately, like
+  the Whisper binaries). Contents: `config.json`, `tokenizer.json`,
+  `tokenizer_config.json`, and **both** ONNX variants —
+  `onnx/model_q4.onnx` (~305 MB, the q4 "Fast" variant) and
+  `onnx/model_quantized.onnx` (~92 MB, the q8 "Best" variant). The **voices**
+  ship inside the `kokoro-js` package itself, so they need no bundling.
+
+**Settings UI — `src/renderer/settings/index.html`**
+- New `Kokoro (offline, natural)` option in the Default Voice dropdown.
+- New `kokoroGroup` field block, conditionally shown when the voice is Kokoro
+  (new `updateTtsUI()` toggle, mirroring `updateProviderUI()`): a voice
+  `<select>` with the 28 voices in `<optgroup>`s by accent/gender, a Speed
+  slider (0.5×–2×) with a live value label, and a **Quality** select
+  (Fast / Best). `kokoroVoice` / `kokoroSpeed` / `kokoroQuality` added to the
+  `fields` array so the existing save/load handlers persist them.
+- Added a `select optgroup` CSS rule (readable header color + slightly darker
+  background) — the browser default rendered the group labels as dark text on
+  the dark field, which was unreadable.
+
+**Chat window — `src/renderer/chat/index.html`**
+- The quick voice toggle is now 4-state: `off → Kokoro (KOK) → Windows (WIN) →
+  OpenAI (AI) → off`, putting the recommended offline voice one click away.
+  Load logic recognizes a saved `kokoro` provider (previously any non-OpenAI
+  enabled provider was mislabeled "WIN").
+
+**Bug fix (pre-existing)**
+- `src/renderer/settings/index.html` — the HIPAA-mode handler targeted a
+  non-existent `#ttsProvider` element (would throw); fixed to `#defaultVoice`,
+  and it now keeps Kokoro or Windows (both local) rather than always forcing
+  Windows.
+
+**Docs**
+- `docs/voice-and-tts.md` — added Kokoro (and the previously-missing OpenAI) to
+  the TTS providers table, plus a "Using Kokoro (No Cloud)" section with the
+  model-download layout and enable steps.
+- `AGENTS.md` — added Kokoro to the `tts/` architecture line, an External
+  binaries note (bundled model, offline load, singleton), and the offline/HIPAA
+  security note.
+- `docs/hipaa-mode.md` — TTS row now reads "Local only — Kokoro or Windows SAPI".
+
+**Performance + quality follow-up (same session)**
+First live run "lagged a lot". Two root causes, both fixed:
+1. **Sequential generate→play→generate stacking.** Benchmarked on a 4-sentence
+   reply (11.6 s of audio): old path took **24.2 s** wall (≈2× the audio, with
+   gaps between sentences). Pipelining generation with playback (above) cut it
+   to **14.9 s** with no gaps — basically audio length + first-chunk latency.
+2. **q8 is slow on CPU.** Benchmarked q8 vs q4 on the user's Ryzen 5 3600
+   (6c/12t) at steady state (warm-up excluded):
+
+   | dtype | First-word | Gen for ~13 s audio | Realtime factor |
+   |-------|-----------|---------------------|-----------------|
+   | q8    | ~3.5 s    | 14.4 s              | 1.12× (slower than realtime) |
+   | q4    | ~0.8 s    | 3.4 s               | **0.26× (≈4× faster)** |
+
+   Counter-intuitively `model_q4.onnx` is *larger* on disk (305 MB vs 92 MB) but
+   hits a much faster compute path. Decision (user): **ship both, add a
+   Fast (q4) / Best (q8) quality toggle, default Fast.** With Fast + pipelining,
+   first word lands in <1 s and playback is gapless.
+
+**Verification**
+- `npx tsc` (emit) and `eslint` on changed files all exit 0.
+- Confirmed `kokoro-js` + `@huggingface/transformers` load under CommonJS
+  `require` and the native onnxruntime binary initializes.
+- **Live end-to-end** (Node probe mirroring `kokoro.ts`): both q4 and q8 load
+  fully offline from `resources/kokoro` and `generate(...)` → valid 24 kHz WAV;
+  benchmark numbers above measured on the real machine.
+- Initial symptom — `Unknown TTS provider: kokoro` at runtime — was the stale
+  `dist/` trap (`npm run dev` had loaded a pre-`tsc` build); resolved by running
+  `npx tsc`.
+
+**Out of scope (deferred)**
+- Warm-up at app startup (load + silent inference when Kokoro is selected) to
+  remove the first-reply cold-start. Considered; not done — Fast/q4 made the
+  cold start small enough.
+- Streaming synthesis (`kokoro-js` offers `stream()` / `TextSplitterStream`);
+  the current per-sentence pipelined chunking matches the existing providers'
+  approach and is already gapless.
+- Non-English voices (the model ships many; the dropdown lists the 28
+  English/American/British voices `kokoro-js` v1.2.1 exposes).
+
 ### feat/groq-stt — Google Gemini as an LLM provider
 **Time:** ~12:07 (local, UTC+3)
 **Branch:** `feat/groq-stt` (continued)

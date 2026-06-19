@@ -27,6 +27,22 @@ interface AIProvider {
 
 const MAX_CONVERSATION_HISTORY = 10;
 
+/** Human-readable name for an AI provider id, for logs. */
+function providerLabel(provider: string): string {
+  switch (provider) {
+    case "anthropic":
+      return "Claude";
+    case "openai":
+      return "OpenAI";
+    case "openrouter":
+      return "OpenRouter";
+    case "gemini":
+      return "Gemini";
+    default:
+      return provider || "AI";
+  }
+}
+
 /**
  * Central orchestrator — mirrors CompanionManager.swift from macOS version.
  *
@@ -99,14 +115,14 @@ export class CompanionManager {
 
     // 3a. Parse raw POINT tags (still in image-pixel space).
     const rawTags = this.parseRawPointTags(response.text);
-    console.log("[Clicky] Claude response:", response.text);
+    const aiProviderName = this.settings.get("aiProvider");
+    console.log(`[Clicky] ${providerLabel(aiProviderName)} response:`, response.text);
     console.log("[Clicky] Raw POINT tags:", JSON.stringify(rawTags));
 
     // 3b. Second-pass refinement: only Claude for now.
     //     For each tag, crop ~400px around the estimated point and ask the
     //     model to return the precise pixel center. Falls back to the raw
     //     tag if anything goes wrong.
-    const aiProviderName = this.settings.get("aiProvider");
     let refinedTags = rawTags;
     if (aiProviderName === "anthropic" && rawTags.length > 0) {
       this.broadcastStage("refining", "Refining points...");
@@ -134,7 +150,7 @@ export class CompanionManager {
               const imgX = crop.origin.x + refined.x / crop.pxPerImageDim;
               const imgY = crop.origin.y + refined.y / crop.pxPerImageDim;
               console.log(
-                `[Clicky] Refined "${tag.label}": (${tag.x},${tag.y}) → (${Math.round(imgX)},${Math.round(imgY)})`
+                `[Clicky] Refined "${tag.label}": (${tag.x},${tag.y}) -> (${Math.round(imgX)},${Math.round(imgY)})`
               );
               return { ...tag, x: Math.round(imgX), y: Math.round(imgY) };
             }
@@ -162,7 +178,7 @@ export class CompanionManager {
       const clampedImgY = Math.max(0, Math.min(shot.imageDimensions.height - 1, tag.y));
       if (clampedImgX !== tag.x || clampedImgY !== tag.y) {
         console.log(
-          `[Clicky] Clamped "${tag.label}" (${tag.x},${tag.y}) → (${clampedImgX},${clampedImgY}) ` +
+          `[Clicky] Clamped "${tag.label}" (${tag.x},${tag.y}) -> (${clampedImgX},${clampedImgY}) ` +
             `to image bounds ${shot.imageDimensions.width}x${shot.imageDimensions.height}`
         );
       }
@@ -193,7 +209,7 @@ export class CompanionManager {
         const overlayIdx = shot ? shot.displayIndex : tag.screen;
         if (overlayIdx !== tag.screen) {
           console.log(
-            `[Clicky] POINT screen${tag.screen} (array pos) → displayIndex ${overlayIdx} (a display was skipped during capture)`
+            `[Clicky] POINT screen${tag.screen} (array pos) -> displayIndex ${overlayIdx} (a display was skipped during capture)`
           );
         }
         const list = byOverlay.get(overlayIdx) || [];
@@ -209,7 +225,7 @@ export class CompanionManager {
         const win = this.overlayWindows[overlayIdx] || this.overlayWindows[0];
         if (win && !win.isDestroyed()) {
           console.log(
-            `[Clicky] → routing ${tags.length} point(s) to overlay ${overlayIdx} @ ${JSON.stringify(win.getBounds())}`
+            `[Clicky] -> routing ${tags.length} point(s) to overlay ${overlayIdx} @ ${JSON.stringify(win.getBounds())}`
           );
           win.webContents.send("overlay:point", tags);
         }
