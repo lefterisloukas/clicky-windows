@@ -247,18 +247,17 @@ export class CompanionManager {
 
       console.log(`[Clicky] ${providerLabel(aiProviderName)} response:`, text);
 
-      // 4. Commit the turn pair to shared history (skip empty replies so we
-      //    don't pollute later context with a blank assistant turn).
+      // 4. Commit the turn to shared history. Always keep the user turn so a
+      //    cancelled/failed/empty reply doesn't silently erase the question from
+      //    later context; only skip an empty assistant turn.
+      this.conversationHistory.push({ role: "user", content: transcript });
       if (text.trim()) {
-        this.conversationHistory.push(
-          { role: "user", content: transcript },
-          { role: "assistant", content: text }
+        this.conversationHistory.push({ role: "assistant", content: text });
+      }
+      if (this.conversationHistory.length > MAX_CONVERSATION_HISTORY * 2) {
+        this.conversationHistory = this.conversationHistory.slice(
+          -MAX_CONVERSATION_HISTORY * 2
         );
-        if (this.conversationHistory.length > MAX_CONVERSATION_HISTORY * 2) {
-          this.conversationHistory = this.conversationHistory.slice(
-            -MAX_CONVERSATION_HISTORY * 2
-          );
-        }
       }
 
       this.notifyAll("chat:stream-end", { text });

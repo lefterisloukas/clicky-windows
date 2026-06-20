@@ -115,6 +115,11 @@ const ANY_POINT_TAG = /\[POINT:[^\]]*\]/g;
 // closing `]` arrives in a later chunk.
 const TRAILING_OPEN = /\[[^\]]*$/;
 
+// When an unclosed `[` (e.g. in markdown/code) would otherwise let `raw` grow
+// without bound, keep at most this many chars of trailing bracketed text while
+// flushing everything before the last `[`.
+const MAX_RAW_OVERSHOOT = 200;
+
 /**
  * Feed streamed text fragments in via `push`; receive completed sentences with
  * POINT tags removed, suitable for handing to TTS. Call `flush` at end-of-stream
@@ -131,6 +136,20 @@ export class IncrementalSentenceExtractor {
 
   push(chunk: string): string[] {
     this.raw += chunk;
+
+    // Safety valve: a long unclosed `[` can otherwise grow `raw` without bound
+    // (the `maxChars` flush below only watches `spoken`). Once `raw` is twice
+    // the sentence chunk size, flush everything before the last `[` and cap the
+    // trailing bracketed tail.
+    if (this.raw.length > this.maxChars * 2) {
+      const lastOpen = this.raw.lastIndexOf("[");
+      const safeUpTo = lastOpen >= 0 ? lastOpen : this.raw.length;
+      this.spoken += this.raw.slice(0, safeUpTo).replace(ANY_POINT_TAG, "");
+      this.raw = this.raw.slice(safeUpTo);
+      if (this.raw.length > MAX_RAW_OVERSHOOT) {
+        this.raw = this.raw.slice(-MAX_RAW_OVERSHOOT);
+      }
+    }
 
     // Only strip up to the start of any trailing unclosed tag; keep that partial
     // buffered so a `:` or boundary char inside a half-received tag can't leak

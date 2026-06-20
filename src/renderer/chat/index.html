@@ -1032,6 +1032,11 @@
     window.clicky.onStreamStart(() => {
       removeWelcome();
       document.getElementById('loading-msg')?.remove();
+      // If a previous stream was superseded, its bubble is now orphaned —
+      // remove it before creating the new one so partial replies don't stack.
+      if (streamBubble) {
+        streamBubble.remove();
+      }
       streamRaw = '';
       streamProduced = true;
       streamBubble = document.createElement('div');
