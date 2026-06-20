@@ -8,6 +8,42 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-20
 
+### fix/forgotten-fixes — apply leftover PR #1 review fixes
+**Branch:** `fix/forgotten-fixes`
+**Components:** `src/main/index.ts`, `src/services/gemini-chat.ts`,
+`src/renderer/chat/index.html`, `src/renderer/settings/index.html`
+
+A set of post-review fixes from `feat/single-settings-surface` that did not make
+it into `develop` when the settings popover was first merged. Intentionally
+excluded: the `audio.ts` logging change (full transcript content is kept for
+debugging) and the `companion.ts` optimistic history push (the current
+`develop` implementation already avoids the dangling-user-turn problem by
+pushing after a successful query).
+
+- **Gemini history turn matching by index** (`src/services/gemini-chat.ts`).
+  The current turn was matched by `entry.content === params.transcript`, which
+  attached screenshots to the wrong message when the user sent the same text
+  twice. Now matches by index (`i === lastIdx`).
+- **baseUrl scheme validation** (`src/main/index.ts`). The Groq/Gemini base URL
+  passed from the renderer was forwarded to `fetch()` without validation. It now
+  rejects non-`https://` schemes before any network call (SSRF guard).
+- **Popover size saved on explicit close only** (`src/main/index.ts`).
+  `popoverWidth`/`popoverHeight` were persisted on every blur event; now they
+  save only when the popover is explicitly closed.
+- **Removed duplicate IPC handler** (`src/main/index.ts`). The
+  `settings:testGroqKey` and `settings:refreshGroqModelList` handlers were
+  identical; extracted to a shared helper.
+- **First-run CTA hidden state** (`src/renderer/chat/index.html`). `#setup-cta`
+  had `class="hidden"` and inline `style="display:flex"` but no matching
+  `.hidden` rule, so the CTA was permanently visible. Added the missing rule.
+- **Kokoro speed slider debounced** (`src/renderer/settings/index.html`). The
+  slider called `save()` (IPC + disk write) on every `input` event; it now
+  updates the label on `input` and persists only on `change`.
+
+---
+
+## 2026-06-20
+
 ### feat/overlay-response-caption — stream the reply near the cursor (the "Companion Pill")
 **Time:** ~ (local, UTC+3)
 **Branch:** `feat/overlay-response-caption`

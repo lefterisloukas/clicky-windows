@@ -584,7 +584,9 @@
     $('kokoroSpeed').addEventListener('input', () => {
       const v = parseFloat($('kokoroSpeed').value || '1');
       $('kokoroSpeedValue').textContent = v.toFixed(1) + '×';
-      save('kokoroSpeed', v);
+    });
+    $('kokoroSpeed').addEventListener('change', () => {
+      save('kokoroSpeed', parseFloat($('kokoroSpeed').value || '1'));
     });
 
     // ---- toggles ----

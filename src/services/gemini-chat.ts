@@ -104,10 +104,13 @@ export class GeminiChatService {
       });
     });
 
-    // Map conversation history to Gemini contents (assistant -> "model"). The
-    // latest user message carries the screenshots; earlier turns are text.
-    const contents = params.conversationHistory.map((entry) => {
-      if (entry.role === "user" && entry.content === params.transcript) {
+    // Map conversation history to Gemini contents (assistant -> "model").
+    // The current turn is always the last entry (pushed by companion.ts before
+    // query() is called), so we use index rather than content equality — content
+    // matching breaks when the user sends the same text twice.
+    const lastIdx = params.conversationHistory.length - 1;
+    const contents = params.conversationHistory.map((entry, i) => {
+      if (i === lastIdx && entry.role === "user") {
         return { role: "user", parts: userParts };
       }
       return {
