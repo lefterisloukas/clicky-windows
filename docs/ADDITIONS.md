@@ -11,6 +11,7 @@ unless otherwise noted). Newest entries go at the top.
 ### feat/streaming-inference — stream the LLM response end-to-end (text + cursor + voice)
 **Time:** ~ (local, UTC+3)
 **Branch:** `feat/streaming-inference`
+**Author:** original streaming-inference implementer (previous agent — not the current user)
 **Components:** `src/main/companion.ts`, `src/services/{claude,openai-chat,openrouter-chat,gemini-chat}.ts`, `src/services/{streaming,incremental}.ts`, `src/services/tts/queue.ts`, `src/preload/index.ts`, `src/renderer/{overlay,chat}/index.html`
 
 Made the whole inference pipeline incremental so the user gets feedback while
@@ -69,6 +70,7 @@ response.
 ### feat/streaming-inference — warm up Kokoro TTS at startup
 **Time:** ~ (local, UTC+3)
 **Branch:** `feat/streaming-inference`
+**Author:** original streaming-inference implementer (previous agent — not the current user)
 **Components:** `src/services/tts/kokoro.ts`, `src/main/index.ts`
 
 **Old behavior:** the Kokoro model loaded lazily on the first `speak()` call, so
@@ -86,6 +88,7 @@ time as before.
 ### feat/streaming-inference — capture the screen in parallel with transcription
 **Time:** ~ (local, UTC+3)
 **Branch:** `feat/streaming-inference`
+**Author:** original streaming-inference implementer (previous agent — not the current user)
 **Components:** `src/main/audio.ts`, `src/main/companion.ts`
 
 **Old behavior:** for voice queries, `audio.ts` awaited transcription and only
