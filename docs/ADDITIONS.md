@@ -8,6 +8,33 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-20
 
+### feat/streaming-inference — post-review fixes for streaming reliability
+**Time:** ~ (local, UTC+3)
+**Branch:** `feat/streaming-inference`
+**Components:** `src/renderer/chat/index.html`, `src/main/companion.ts`, `src/services/incremental.ts`
+
+Addressed three issues found during PR review of the streaming-inference work:
+
+1. **Stale chat bubbles on query supersession.** When a new query cancelled an
+   in-flight one, the old streaming bubble was left in the DOM because
+   `chat:stream-start` created a new bubble without removing the existing one.
+   `src/renderer/chat/index.html` now removes any existing streaming bubble
+   before opening a new one.
+2. **Empty assistant replies dropped the user turn from history.**
+   `src/main/companion.ts` previously skipped committing *both* turns when the
+   model returned an empty response, silently erasing the user's question from
+   later context. It now always commits the user turn and only skips an empty
+   assistant turn.
+3. **Unbounded raw buffer in sentence extractor.** A long unclosed `[` in
+   streamed text (e.g. markdown or code) could cause `IncrementalSentenceExtractor`
+   to buffer `raw` without limit. `src/services/incremental.ts` now caps the raw
+   buffer and flushes everything before the last `[` once it exceeds twice the
+   sentence chunk size.
+
+All three fixes pass `npm run typecheck` and `npm run lint`.
+
+---
+
 ### feat/streaming-inference — stream the LLM response end-to-end (text + cursor + voice)
 **Time:** ~ (local, UTC+3)
 **Branch:** `feat/streaming-inference`
