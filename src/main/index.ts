@@ -117,41 +117,46 @@ async function fetchGroqModels(
   }
 }
 
+// Cursor tracking loop. Runs unconditionally while the app is up so the
+// listening/thinking companion can anchor to the cursor even when the glow
+// dot ("cursor buddy") is disabled. Two concerns are kept separate:
+//   - overlay:companion-anchor — always emitted; drives the capsule position.
+//   - overlay:cursor-buddy(-visible) — emitted only when the glow is enabled,
+//     so the glow dot behaves exactly as before.
 function startCursorBuddy(): void {
   if (cursorBuddyInterval) return;
   cursorBuddyInterval = setInterval(() => {
     if (overlayWindows.length === 0) return;
+    const glowEnabled = !!settings.get("cursorBuddyEnabled");
     const point = screen.getCursorScreenPoint();
-    // Route the buddy to the overlay for the display that contains the
-    // cursor; hide it on every other overlay. Coordinates are translated
-    // into that display's local CSS space (matches how POINT tags work).
+    // Route to the overlay for the display that contains the cursor; mark
+    // every other overlay inactive. Coordinates are translated into that
+    // display's local CSS space (matches how POINT tags work).
     const target = screen.getDisplayNearestPoint(point);
     const displays = screen.getAllDisplays();
     const targetIndex = displays.findIndex((d) => d.id === target.id);
+    const localX = point.x - target.bounds.x;
+    const localY = point.y - target.bounds.y;
     for (let i = 0; i < overlayWindows.length; i++) {
       const win = overlayWindows[i];
       if (!win || win.isDestroyed()) continue;
-      if (i === targetIndex) {
-        const localX = point.x - target.bounds.x;
-        const localY = point.y - target.bounds.y;
+      const active = i === targetIndex;
+
+      // Capsule anchor — always sent.
+      win.webContents.send("overlay:companion-anchor", {
+        active,
+        x: localX,
+        y: localY,
+      });
+
+      // Glow dot — gated by the setting.
+      if (glowEnabled && active) {
         win.webContents.send("overlay:cursor-buddy", localX, localY);
       } else {
         win.webContents.send("overlay:cursor-buddy-visible", false);
       }
     }
   }, 16);
-}
-
-function stopCursorBuddy(): void {
-  if (cursorBuddyInterval) {
-    clearInterval(cursorBuddyInterval);
-    cursorBuddyInterval = null;
-  }
-  for (const win of overlayWindows) {
-    if (win && !win.isDestroyed()) {
-      win.webContents.send("overlay:cursor-buddy-visible", false);
-    }
-  }
 }
 
 /**
@@ -243,6 +248,10 @@ function createOverlayWindow(display: Electron.Display, displayIndex: number): B
   return win;
 }
 
+// Create the chat window — always HIDDEN. It is never shown by creation alone:
+// push-to-talk needs this renderer alive to capture the mic (getUserMedia /
+// MediaRecorder live only here), so the window is often created purely to
+// record, silently. Showing is a separate, explicit step (`openChatWindow`).
 function createChatWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 420,
@@ -256,24 +265,13 @@ function createChatWindow(): BrowserWindow {
       preload: path.join(__dirname, "..", "preload", "index.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // Keep timers / MediaRecorder running at full rate while the window is
+      // hidden — push-to-talk records here even when chat is never shown.
+      backgroundThrottling: false,
     },
   });
 
   win.loadFile(path.join(__dirname, "..", "..", "src", "renderer", "chat", "index.html"));
-  win.once("ready-to-show", () => {
-    win.show();
-    // setAlwaysOnTop after show — more reliable on Windows than constructor option
-    if (settings.get("alwaysOnTop")) {
-      win.setAlwaysOnTop(true, "screen-saver");
-      // Re-apply after a short delay — Windows can reset it
-      setTimeout(() => {
-        if (!win.isDestroyed()) {
-          win.setAlwaysOnTop(true, "screen-saver");
-          // alwaysOnTop applied
-        }
-      }, 500);
-    }
-  });
   return win;
 }
 
@@ -372,16 +370,58 @@ function togglePopover(): void {
   showPopover();
 }
 
-// Focus the chat window if it exists, otherwise create it. Chat is opened
-// lazily — from the tray menu, push-to-talk, or the popover's "Open chat".
-function openChatWindow(): void {
-  if (chatWindow && !chatWindow.isDestroyed()) {
-    chatWindow.focus();
-    return;
+// Ensure the (hidden) chat window exists, without showing it. Used both as the
+// silent host for push-to-talk recording and as the base for openChatWindow.
+function ensureChatWindow(): BrowserWindow {
+  if (!chatWindow || chatWindow.isDestroyed()) {
+    chatWindow = createChatWindow();
+    chatWindow.on("closed", () => {
+      chatWindow = null;
+    });
   }
-  chatWindow = createChatWindow();
-  chatWindow.on("closed", () => {
-    chatWindow = null;
+  return chatWindow;
+}
+
+// Reveal (and create if needed) the chat window — an EXPLICIT user action
+// (tray menu, push-to-talk button, popover's "Open chat", first-run). Waits for
+// the renderer to be paint-ready to avoid a white flash, then applies the
+// always-on-top flag (more reliable after show() than via the constructor).
+function openChatWindow(): void {
+  const win = ensureChatWindow();
+  const reveal = () => {
+    if (win.isDestroyed()) return;
+    win.show();
+    win.focus();
+    if (settings.get("alwaysOnTop")) {
+      win.setAlwaysOnTop(true, "screen-saver");
+      // Re-apply after a short delay — Windows can reset it.
+      setTimeout(() => {
+        if (!win.isDestroyed()) win.setAlwaysOnTop(true, "screen-saver");
+      }, 500);
+    }
+  };
+  if (win.isVisible()) {
+    win.focus();
+  } else if (win.webContents.isLoading()) {
+    win.once("ready-to-show", reveal);
+  } else {
+    reveal();
+  }
+}
+
+// Ensure a live recorder exists before push-to-talk recording starts, WITHOUT
+// showing the chat window. Mic capture (getUserMedia/MediaRecorder) lives only
+// in the chat renderer; without this, the first hotkey press after launch (no
+// chat window yet) is recorded by nobody — the overlay shows "listening" but
+// nothing is captured. Resolves once the hidden renderer has finished loading.
+function ensureChatReady(): Promise<void> {
+  const win = ensureChatWindow();
+  return new Promise((resolve) => {
+    if (!win.webContents.isLoading()) {
+      resolve();
+      return;
+    }
+    win.webContents.once("did-finish-load", () => resolve());
   });
 }
 
@@ -407,10 +447,15 @@ function setupIPC(): void {
       chatWindow.setAlwaysOnTop(!!value, "screen-saver");
     }
 
-    // Toggle cursor buddy
-    if (key === "cursorBuddyEnabled") {
-      if (value) startCursorBuddy();
-      else stopCursorBuddy();
+    // The cursor tracking loop always runs (see startCursorBuddy); this
+    // setting only gates the glow dot. When turning it off, hide the glow
+    // immediately on every overlay — the next tick won't re-show it.
+    if (key === "cursorBuddyEnabled" && !value) {
+      for (const win of overlayWindows) {
+        if (win && !win.isDestroyed()) {
+          win.webContents.send("overlay:cursor-buddy-visible", false);
+        }
+      }
     }
   });
 
@@ -511,8 +556,13 @@ app.whenReady().then(() => {
     onQuit: () => app.quit(),
   });
 
-  const hotkeyManager = new HotkeyManager(settings);
+  const hotkeyManager = new HotkeyManager(settings, ensureChatReady);
   hotkeyManager.register();
+
+  // Pre-create the chat window HIDDEN so the push-to-talk recorder is warm and
+  // the very first hotkey press records instantly — without ever popping chat
+  // onto the screen. It stays invisible until the user explicitly opens it.
+  ensureChatWindow();
 
   // Launch tray-only / background by default. The only thing that opens on
   // startup is first-run onboarding: if no AI key is configured, drop the
@@ -527,10 +577,10 @@ app.whenReady().then(() => {
     showPopover();
   }
 
-  // Start cursor buddy if enabled
-  if (settings.get("cursorBuddyEnabled")) {
-    startCursorBuddy();
-  }
+  // Always run the cursor tracking loop so the listening/thinking companion
+  // can anchor to the cursor regardless of the glow-dot setting. The loop
+  // itself gates the glow messages on `cursorBuddyEnabled`.
+  startCursorBuddy();
 
   console.log("Clicky Windows started — running in system tray");
 });

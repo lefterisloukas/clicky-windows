@@ -1076,6 +1076,7 @@
     let mediaRecorder = null;
     let audioChunks = [];
     let isRecording = false;
+    let discardRecording = false;
 
     async function startRecording() {
       try {
@@ -1097,6 +1098,16 @@
         mediaRecorder.onstop = async () => {
           // Stop all tracks to release mic
           stream.getTracks().forEach(t => t.stop());
+
+          // Cancelled via Escape — drop the audio, reset UI, send nothing.
+          if (discardRecording) {
+            discardRecording = false;
+            audioChunks = [];
+            hideStatus();
+            micBtn.className = 'mic-btn';
+            micBtn.title = 'Push to talk (or Ctrl+Shift+Space)';
+            return;
+          }
 
           if (audioChunks.length === 0) return;
 
@@ -1203,6 +1214,16 @@
         stopRecording();
       }
     });
+
+    // Escape during recording — abort and discard the audio.
+    if (window.clicky.onRecordingCancelled) {
+      window.clicky.onRecordingCancelled(() => {
+        if (isRecording) {
+          discardRecording = true;
+          stopRecording();
+        }
+      });
+    }
 
     // TTS 4-state toggle: off → Kokoro (offline neural) → Windows → OpenAI cloud → off
     const ttsToggle = document.getElementById('tts-toggle');

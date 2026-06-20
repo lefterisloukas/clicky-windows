@@ -186,3 +186,19 @@ loads once into a module-level singleton — never reconstruct it per `speak()`.
   means no audio or response text ever leaves the machine (see
   `docs/hipaa-mode.md`).
 - See `SECURITY.md` for the project's disclosure policy.
+
+## Git and commits
+
+- **Never** add the `Co-Authored-By` flag to commits, pull requests, or any
+  git operations. Keep authorship clean and singular.
+
+## Documentation: tracking features and changes
+
+When a feature, major fix, or significant change is added to the app:
+
+1. Document it in `docs/ADDITIONS.md` with an entry following the date-journal
+   format already established in that file.
+2. Include the date, a brief description of what was added/changed, and any
+   relevant context (e.g., which component, if it's a breaking change, etc.).
+3. This creates a historical record of the app's evolution and makes it easy
+   to understand what changed and when.
