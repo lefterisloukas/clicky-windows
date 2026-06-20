@@ -8,6 +8,36 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-21
 
+### feat/overlay-numbered-map — sync the first step with the voice
+**Branch:** `feat/overlay-numbered-map`
+**Components:** `src/services/tts/queue.ts`, `src/main/companion.ts`,
+`src/preload/index.ts`, `src/renderer/overlay/index.html`
+
+The numbered map advanced on a pure time estimate, independent of TTS. In
+practice the badges raced ahead while TTS was still spinning up the first
+sentence — the voice for step 1 could begin only as the *last* badge was
+showing. The dominant cause was startup latency, not pacing: the walk began the
+instant points streamed in, seconds before any audio was audible.
+
+Interim fix (not full Phase 2): **gate the first reveal on the voice actually
+starting.**
+- `TTSQueue` gained an optional `onFirstPlay` constructor callback, fired exactly
+  once the first clip begins playing — hooked into both the pipelined `pump()`
+  (before `synth.play()`) and the sequential `chain` (before `speak()`).
+- `companion.ts` passes it, broadcasting `companion:speaking-started` (gated on
+  `!session.cancelled`).
+- `preload` exposes `onSpeakingStarted`.
+- The overlay holds the first `mapAdvance()` until that signal (new `startWalk`):
+  it starts at once if speech has already begun or TTS is off (`mapTtsOn`,
+  cached from `ttsEnabled`), otherwise waits, with `MAP_START_FALLBACK` (4 s) as
+  a backstop if no voice signal ever arrives (e.g. a TTS error). All gate state
+  (`mapStarted`, `mapVoiceStarted`, `mapStartTimer`) resets in `mapReset`.
+
+Once aligned at the start, the existing `words × CAP_MS_PER_WORD` dwell keeps
+later steps roughly tracking speech. This is the start-alignment slice; true
+per-step speech gating remains Phase 2 (`NEXT.md`), and the `onFirstPlay` hook is
+a reusable step toward it.
+
 ### feat/overlay-numbered-map — move POINT tags to end-of-sentence (prompt↔parser contract)
 **Branch:** `feat/overlay-numbered-map`
 **Components:** `src/services/prompt.ts`, `src/services/incremental.ts` (doc only)

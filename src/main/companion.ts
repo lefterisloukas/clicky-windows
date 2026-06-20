@@ -211,7 +211,12 @@ export class CompanionManager {
       // Query-local (resets per query), unlike the lifetime `pointSeq` id source.
       let stepIndex = 0;
       if (this.settings.get("ttsEnabled")) {
-        session.tts = new TTSQueue(this.settings);
+        // Tell the overlay the moment the voice actually starts, so the numbered
+        // map can reveal its first step in sync with speech rather than racing
+        // ahead on a timer while TTS is still spinning up.
+        session.tts = new TTSQueue(this.settings, () => {
+          if (!session.cancelled) this.notifyAll("companion:speaking-started", {});
+        });
       }
 
       // Clear any stale points from a previous query, then open the chat bubble.

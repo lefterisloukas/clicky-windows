@@ -93,6 +93,12 @@ contextBridge.exposeInMainWorld("clicky", {
     ipcRenderer.on("chat:stream-end", (_event, data) => callback(data));
   },
 
+  // Fires the moment TTS playback for a query begins — lets the numbered map
+  // reveal its first step in sync with the voice instead of a timer.
+  onSpeakingStarted: (callback: () => void) => {
+    ipcRenderer.on("companion:speaking-started", () => callback());
+  },
+
   // Fires when TTS playback for a query has fully drained — lets the overlay
   // response caption linger exactly as long as the voice, not the text reveal.
   onSpeakingEnded: (callback: () => void) => {

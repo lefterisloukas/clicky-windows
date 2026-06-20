@@ -787,6 +787,7 @@
     const MAP_MAX_DWELL = 9000;     // ms cap so one verbose step can't stall the walk
     const MAP_CLEAR_AFTER = 10000;  // ms after the walk ends before the trail fades away
     const MAP_FADE_MS = 400;        // badge fade-out duration before removal
+    const MAP_START_FALLBACK = 4000; // ms backstop to start the walk if no voice signal comes
 
     const mapPoints = new Map();    // id -> { id, index, x, y, label, text, el, revealed }
     const mapOrder = [];            // ids in arrival order
@@ -797,18 +798,35 @@
     let mapAdvanceTimer = null;     // dwell timer for the active step
     let mapClearTimer = null;       // delay before the finished trail starts fading
     let mapRemoveTimer = null;      // fade-out window before the badges are removed
+    let mapStarted = false;         // the first step has been revealed
+    let mapVoiceStarted = false;    // companion:speaking-started arrived for this query
+    let mapStartTimer = null;       // backstop timer for the first reveal
+    let mapTtsOn = true;            // cached: is TTS enabled? gates whether we wait for voice
 
     function mapReset() {
       if (mapAdvanceTimer) { clearTimeout(mapAdvanceTimer); mapAdvanceTimer = null; }
       if (mapClearTimer) { clearTimeout(mapClearTimer); mapClearTimer = null; }
       if (mapRemoveTimer) { clearTimeout(mapRemoveTimer); mapRemoveTimer = null; }
+      if (mapStartTimer) { clearTimeout(mapStartTimer); mapStartTimer = null; }
       mapPoints.clear();
       mapOrder.length = 0;
       mapActiveId = null;
       mapWaiting = false;
       mapStreamEnded = false;
       mapOwnsPill = false;
+      mapStarted = false;
+      mapVoiceStarted = false;
       if (mapBadges) mapBadges.innerHTML = '';
+    }
+
+    // Begin the walk (reveal step 1). Gated so the first badge appears in sync
+    // with the voice: when TTS is on we wait for companion:speaking-started
+    // (with MAP_START_FALLBACK as a backstop); when it's off we start at once.
+    function startWalk() {
+      if (mapStarted) return;
+      if (mapStartTimer) { clearTimeout(mapStartTimer); mapStartTimer = null; }
+      mapStarted = true;
+      mapAdvance();
     }
 
     function mapMakeBadge(index) {
@@ -942,9 +960,18 @@
       });
       mapOrder.push(p.id);
 
-      // Kick the walk only when idle: if a step is currently dwelling, this new
-      // point waits its turn and the running dwell timer picks it up.
-      if (mapAdvanceTimer == null && (mapActiveId == null || mapWaiting)) {
+      if (!mapStarted) {
+        // First step: align its reveal with the voice. Start now if speech has
+        // already begun or TTS is off; otherwise wait for speaking-started, with
+        // a backstop in case no voice signal ever arrives.
+        if (mapVoiceStarted || !mapTtsOn) {
+          startWalk();
+        } else if (mapStartTimer == null) {
+          mapStartTimer = setTimeout(startWalk, MAP_START_FALLBACK);
+        }
+      } else if (mapAdvanceTimer == null && (mapActiveId == null || mapWaiting)) {
+        // Walk already running: if it's idle (ran dry), this point resumes it;
+        // if a step is dwelling, the running timer picks this one up in turn.
         mapAdvance();
       }
     }
@@ -976,6 +1003,7 @@
           window.clicky.getSettings().then((s) => {
             capEnabled = s ? s.overlayCaptionEnabled !== false : true;
             mapEnabled = s ? s.overlayNumberedMap !== false : true;
+            mapTtsOn = s ? s.ttsEnabled !== false : true;
             // Captions off: hide only the pill — never wipe the numbered map.
             if (!capEnabled) responseEl.classList.remove('visible');
           }).catch(() => {});
@@ -1031,6 +1059,16 @@
       });
     }
 
+    // Voice started for this query — release the numbered map's first step so it
+    // appears in sync with speech instead of racing ahead while TTS spins up.
+    if (window.clicky && window.clicky.onSpeakingStarted) {
+      window.clicky.onSpeakingStarted(() => {
+        if (!capActive) return;  // stale event from a prior query
+        mapVoiceStarted = true;
+        if (mapEnabled && mapOwnsPill && !mapStarted) startWalk();
+      });
+    }
+
     // Voice finished for this query — now the pill can fade. Authoritative when
     // TTS is on; preempts the estimate fallback above.
     if (window.clicky && window.clicky.onSpeakingEnded) {
@@ -1047,6 +1085,7 @@
         .then((s) => {
           capEnabled = s ? s.overlayCaptionEnabled !== false : true;
           mapEnabled = s ? s.overlayNumberedMap !== false : true;
+          mapTtsOn = s ? s.ttsEnabled !== false : true;
         })
         .catch(() => {});
     }
