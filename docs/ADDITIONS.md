@@ -51,16 +51,37 @@ replies. Root cause: onnxruntime-node defaults its CPU execution provider to one
 intra-op thread *per logical core* (12+ here), so each sentence's inference
 pegged every core — and because generation is pipelined with playback, that
 saturation was near-continuous. kokoro-js doesn't forward `session_options`
-through `from_pretrained`, so `kokoro.ts` now caps the intra-op pool to half the
-cores by wrapping the shared `InferenceSession.create` that transformers.js
-calls (same onnxruntime-node instance — verified). The wrap is idempotent and
-fail-safe: if a future dependency upgrade changes how ORT is loaded, it silently
-no-ops back to the default thread count rather than breaking. q4 inference is
+through `from_pretrained`, so we cap the intra-op pool to half the cores by
+wrapping the shared `InferenceSession.create` that transformers.js calls (same
+onnxruntime-node instance — verified). The wrap is idempotent and fail-safe: if
+a future dependency upgrade changes how ORT is loaded, it silently no-ops back
+to the default thread count rather than breaking. q4 inference is
 memory-bandwidth bound, so the cap costs little speed while leaving headroom for
 the OS and UI.
 
+**Follow-up 2 — generation moved off the main process (the actual lag fix)**
+The thread cap reduced CPU load but the UI still janked. Measuring with an
+event-loop probe pinned the real cause: Kokoro's work (phonemization + ONNX
+inference + WAV encoding) ran *in the Electron main process* and blocked its
+event loop ~190 ms per sentence, stalling overlay/chat IPC — the felt "lag at
+the start of each sentence." It was never raw CPU saturation (CPU only hit
+50–70%); it was heavy synchronous work on the UI thread.
+
+Fix: a new `src/services/tts/kokoro-worker.ts` runs the entire model in a Node
+`worker_thread`. `kokoro.ts` now only posts text and awaits finished WAV bytes
+(transferred zero-copy), so the main thread never stalls. The thread cap moved
+into the worker (where ORT now loads); the per-sentence WAV write is now async.
+The model lives only in the worker (~305 MB out of the main process). Measured
+with the compiled worker: main-thread event-loop lag dropped from **188 ms to
+14 ms**, generation unchanged at ~1 s/sentence.
+
+Note: in dev (`npm run dev`) the worker loads from `dist/`. For packaged builds,
+confirm `worker_threads` can load the entry from the asar archive (Electron
+supports this in recent versions, but it's worth a smoke test before release).
+
 **Verification**
 - `npx tsc` exits 0.
+- Standalone worker benchmark: main-thread event-loop lag 14 ms (was 188 ms).
 
 ---
 
