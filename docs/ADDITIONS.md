@@ -8,6 +8,48 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-20
 
+### fix/tts-playback-gap — remove the dead air and CPU stutter between spoken sentences
+**Time:** ~ (local, UTC+3)
+**Branch:** `fix/tts-playback-gap`
+**Components:** `src/services/tts/{kokoro,openai,elevenlabs}.ts`
+
+Fixed two related TTS symptoms reported with the local Kokoro voice: the PC
+stuttered at the start of each sentence, and the audio for each sentence came
+in noticeably delayed after the previous one.
+
+**Root cause**
+Both came from the per-chunk audio playback, not from Kokoro's inference. Each
+sentence chunk was played by spawning a fresh `powershell.exe` that ran
+`Add-Type -AssemblyName presentationCore` (cold-loading the heavyweight WPF
+PresentationCore assembly), opened a `MediaPlayer`, called `Play()`, then
+`Start-Sleep`-ed for a *guessed* duration before the playback promise resolved
+and the queue could advance.
+
+- **Inter-sentence delay:** Kokoro slept `Math.ceil(duration) + 1` seconds —
+  1–2s of guaranteed dead air after every sentence's audio actually ended.
+  OpenAI estimated from MP3 byte size + 1s; ElevenLabs slept a hardcoded 8s
+  regardless of clip length.
+- **Per-sentence stutter:** spawning PowerShell and cold-loading the WPF
+  assemblies for every chunk produced a CPU burst right as each sentence began,
+  stacked on top of the concurrent Kokoro inference for the next chunk.
+
+**Fix**
+1. `kokoro.ts` (WAV output): play via `System.Media.SoundPlayer.PlaySync()`,
+   which blocks for exactly the clip length and doesn't need PresentationCore.
+   No more guessed `Start-Sleep`; duration is now used only to bound the
+   process timeout.
+2. `openai.ts`: switched the request from `response_format: "mp3"` to `"wav"`
+   so it can use the same `SoundPlayer.PlaySync()` path.
+3. `elevenlabs.ts` (MP3, no clean WAV option from the API): kept `MediaPlayer`
+   but replaced the hardcoded 8s pad — it now polls until the file's
+   `NaturalDuration` is known (capped at 5s so a load failure can't hang) and
+   sleeps that exact span + a small 250ms tail.
+
+**Verification**
+- `npx tsc` exits 0.
+
+---
+
 ### fix/truncated-point-tags — stop truncated responses from leaking half-formed POINT tags
 **Time:** ~ (local, UTC+3)
 **Branch:** `fix/truncated-point-tags`

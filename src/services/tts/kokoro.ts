@@ -160,23 +160,23 @@ export class KokoroTTS implements TTSProvider {
     const tmpFile = path.join(os.tmpdir(), `clicky-tts-${stamp}.wav`);
     fs.writeFileSync(tmpFile, wavBuffer);
 
-    // Exact duration from the raw samples (Kokoro outputs 24 kHz mono).
+    // Exact duration from the raw samples (Kokoro outputs 24 kHz mono); used
+    // only to bound the process timeout, not to time playback.
     const durationSeconds = audio.audio.length / audio.sampling_rate;
-    const playSeconds = Math.ceil(durationSeconds) + 1;
 
     return new Promise((resolve, reject) => {
+      // SoundPlayer.PlaySync() plays the WAV and blocks for exactly its length,
+      // so there is no inter-sentence gap from a guessed Start-Sleep, and it
+      // avoids cold-loading the heavyweight WPF PresentationCore assembly that
+      // MediaPlayer requires — both were stalling/spiking the CPU per sentence.
       const psCmd = [
-        "Add-Type -AssemblyName presentationCore",
-        "$p = New-Object System.Windows.Media.MediaPlayer",
-        `$p.Open([Uri]'${tmpFile}')`,
-        "$p.Play()",
-        `Start-Sleep -Seconds ${playSeconds}`,
-        "$p.Close()",
+        `$p = New-Object System.Media.SoundPlayer '${tmpFile}'`,
+        "$p.PlaySync()",
       ].join("; ");
 
       this.currentProcess = exec(
         `powershell -Command "${psCmd}"`,
-        { timeout: playSeconds * 1000 + 5000 },
+        { timeout: Math.ceil(durationSeconds) * 1000 + 5000 },
         (error) => {
           this.currentProcess = null;
           try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }

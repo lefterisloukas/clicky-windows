@@ -54,12 +54,19 @@ export class ElevenLabsTTS implements TTSProvider {
     fs.writeFileSync(tmpFile, audioBuffer);
 
     return new Promise((resolve, reject) => {
+      // ElevenLabs returns MP3, which SoundPlayer can't play, so we keep
+      // MediaPlayer — but block for the file's *actual* NaturalDuration instead
+      // of a hardcoded 8s pad (which left seconds of dead air after each chunk).
+      // MediaPlayer.Open is async, so we poll until the duration is known
+      // (capped at 5s so a load failure can't hang) then sleep that exact span.
       const psCmd = [
         "Add-Type -AssemblyName presentationCore",
         "$p = New-Object System.Windows.Media.MediaPlayer",
         `$p.Open([Uri]'${tmpFile}')`,
+        "$w = 0",
+        "while (-not $p.NaturalDuration.HasTimeSpan -and $w -lt 250) { Start-Sleep -Milliseconds 20; $w++ }",
         "$p.Play()",
-        "Start-Sleep -Seconds 8",
+        "if ($p.NaturalDuration.HasTimeSpan) { Start-Sleep -Milliseconds ([int]$p.NaturalDuration.TimeSpan.TotalMilliseconds + 250) } else { Start-Sleep -Seconds 8 }",
         "$p.Close()",
       ].join("; ");
       const cmd = `powershell -Command "${psCmd}"`;
