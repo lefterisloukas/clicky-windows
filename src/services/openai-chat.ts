@@ -78,7 +78,7 @@ export class OpenAIChatService {
 
     const body: Record<string, unknown> = {
       model,
-      max_completion_tokens: 1024,
+      max_completion_tokens: 4096,
       messages,
     };
     if (stream) body.stream = true;

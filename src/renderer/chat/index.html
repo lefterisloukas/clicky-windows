@@ -1008,6 +1008,19 @@
     let streamRaw = '';
     let streamProduced = false;
 
+    // Remove complete POINT tags and hide any trailing incomplete tag that has
+    // not closed yet (e.g. a response truncated at max tokens). Keeping the raw
+    // text intact lets a later chunk finish the tag; stripping here only affects
+    // what the user sees.
+    function stripPointTags(text) {
+      const withoutComplete = text.replace(POINT_RE, '');
+      const trailingOpen = withoutComplete.match(/\[[^\]]*$/);
+      if (trailingOpen && /\[POINT:/i.test(trailingOpen[0])) {
+        return withoutComplete.slice(0, trailingOpen.index);
+      }
+      return withoutComplete;
+    }
+
     function removeWelcome() {
       if (firstMessage) {
         welcome.remove();
@@ -1050,12 +1063,12 @@
       if (!streamBubble) return;
       streamRaw += text;
       // Plain text while streaming — cheap, flicker-free; markdown at the end.
-      streamBubble.textContent = streamRaw.replace(POINT_RE, '').trim();
+      streamBubble.textContent = stripPointTags(streamRaw).trim();
       messages.scrollTop = messages.scrollHeight;
     });
 
     window.clicky.onStreamEnd(({ text, error }) => {
-      const finalText = (text || streamRaw).replace(POINT_RE, '').trim();
+      const finalText = stripPointTags(text || streamRaw).trim();
       if (error) {
         // Drop the (usually empty) streaming bubble; the invoke catch shows the
         // error message as a single source of truth.
@@ -1092,7 +1105,7 @@
         document.getElementById('loading-msg')?.remove();
         // If streaming already rendered the bubble, don't duplicate it.
         if (!streamProduced) {
-          const displayText = (response || '').replace(POINT_RE, '').trim();
+          const displayText = stripPointTags(response || '').trim();
           addMessage(displayText || '(no response)', 'assistant');
         }
       } catch (err) {
@@ -1252,7 +1265,7 @@
               // The assistant reply streams in via chat:stream-* events; only
               // fall back to the returned text if no streaming occurred.
               if (!streamProduced && result.response) {
-                const displayText = result.response.replace(POINT_RE, '').trim();
+                const displayText = stripPointTags(result.response).trim();
                 addMessage(displayText || '(no response)', 'assistant');
               }
             }

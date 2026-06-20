@@ -93,7 +93,7 @@ export class ClaudeService {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 1024,
+        max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages,
         ...(stream ? { stream: true } : {}),

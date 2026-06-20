@@ -8,6 +8,41 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-20
 
+### fix/truncated-point-tags — stop truncated responses from leaking half-formed POINT tags
+**Time:** ~ (local, UTC+3)
+**Branch:** `fix/truncated-point-tags`
+**Components:** `src/services/{claude,openai-chat,openrouter-chat,gemini-chat}.ts`, `src/renderer/chat/index.html`
+
+Fixed a bug where long assistant replies were cut off mid-POINT tag, causing
+chat text to end with a visible fragment like `[POINT:4` and leaving the answer
+incomplete.
+
+**Root cause**
+All four LLM providers capped their output at 1024 tokens. Replies that listed
+several screen elements (e.g. multiple musical notes in a score) could hit that
+limit while a `[POINT:x,y:label:screenN]` tag was still being emitted. The chat
+renderer stripped only *complete* tags, so the trailing incomplete tag leaked
+into the message bubble.
+
+**Fix**
+1. Raised the output-token limit from `1024` to `4096` on every provider:
+   `claude.ts` (`max_tokens`), `openai-chat.ts` (`max_completion_tokens`),
+   `openrouter-chat.ts` (`max_tokens`), and `gemini-chat.ts`
+   (`maxOutputTokens`). This is the primary fix — it gives the model enough
+   room to finish its sentence and any POINT tags.
+2. Hardened the chat renderer to hide a trailing, unclosed `[POINT:...` fragment
+   while streaming and in the final fallback display path. The raw accumulated
+   text is kept intact so a later chunk can still complete the tag; only what
+   the user sees is filtered. This prevents any leftover partial tag from being
+   shown if a future response still gets truncated.
+
+**Verification**
+- `npx tsc` exits 0.
+
+---
+
+## 2026-06-20
+
 ### feat/streaming-inference — perf: reuse AI provider instances across queries
 **Time:** ~ (local, UTC+3)
 **Branch:** `feat/streaming-inference`

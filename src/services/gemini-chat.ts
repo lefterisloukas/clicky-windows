@@ -118,7 +118,7 @@ export class GeminiChatService {
 
     const config: Record<string, unknown> = {
       systemInstruction: SYSTEM_PROMPT,
-      maxOutputTokens: 1024,
+      maxOutputTokens: 4096,
     };
     if (!Number.isNaN(temperature)) {
       config.temperature = temperature;
