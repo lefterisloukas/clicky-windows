@@ -66,38 +66,36 @@
       50% { transform: scale(2); opacity: 0; }
     }
 
-    /* Cursor buddy — always-on glow that follows mouse */
+    /* Cursor buddy — 4-pointed spark that follows the cursor, anchored
+       bottom-right of the cursor tip so it never covers the hotspot. */
     #cursor-buddy {
       position: absolute;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      background: rgba(59, 130, 246, 0.6);
-      box-shadow: 0 0 16px rgba(59, 130, 246, 0.5), 0 0 32px rgba(59, 130, 246, 0.2);
-      transform: translate(-50%, -50%);
+      width: 14px;
+      height: 14px;
+      /* offset so the spark sits below-right of the cursor tip */
+      transform: translate(8px, 8px);
       pointer-events: none;
       z-index: 9998;
       opacity: 0;
       transition: opacity 0.3s ease;
+      animation: sparkSpin 7s linear infinite, sparkPulse 2s ease-in-out infinite;
     }
 
     #cursor-buddy.visible {
-      opacity: 1;
+      opacity: 0.82;
     }
 
-    #cursor-buddy::after {
-      content: '';
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      background: rgba(59, 130, 246, 0.3);
-      animation: buddy-pulse 2s ease-in-out infinite;
+    @keyframes sparkSpin {
+      to { transform: translate(8px, 8px) rotate(360deg); }
     }
 
-    @keyframes buddy-pulse {
-      0%, 100% { transform: scale(1); opacity: 0.3; }
-      50% { transform: scale(1.8); opacity: 0; }
+    @keyframes sparkPulse {
+      0%, 100% { filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.8)) drop-shadow(0 0 8px rgba(34, 211, 238, 0.3)); }
+      50%       { filter: drop-shadow(0 0 7px rgba(34, 211, 238, 1.0)) drop-shadow(0 0 14px rgba(34, 211, 238, 0.5)); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #cursor-buddy { animation: none; transform: translate(8px, 8px); }
     }
 
     /* Cursor companion — bare animation anchored bottom-right of cursor tip.
@@ -172,7 +170,18 @@
   </style>
 </head>
 <body>
-  <div id="cursor-buddy"></div>
+  <svg id="cursor-buddy" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="spark-grad" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"   stop-color="#ffffff" stop-opacity="0.95"/>
+        <stop offset="35%"  stop-color="#22D3EE" stop-opacity="0.9"/>
+        <stop offset="100%" stop-color="#0EA5E9" stop-opacity="0.3"/>
+      </radialGradient>
+    </defs>
+    <!-- 4-pointed star: two overlapping diamond shapes -->
+    <path d="M7 0 L8.2 5.8 L14 7 L8.2 8.2 L7 14 L5.8 8.2 L0 7 L5.8 5.8 Z"
+          fill="url(#spark-grad)"/>
+  </svg>
   <div id="cursor"></div>
   <div id="label"></div>
 

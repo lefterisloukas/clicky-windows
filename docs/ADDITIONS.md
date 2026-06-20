@@ -8,6 +8,26 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-20
 
+### feat/cursor-visual-states — refactor: replace cursor-buddy circle with 4-pointed spark
+**Time:** ~ (local, UTC+3)
+**Branch:** `feat/cursor-visual-states`
+**Component:** `src/renderer/overlay/index.html`
+
+Replaced the filled blue circle (`#cursor-buddy`) that tracked the mouse with a
+4-pointed star (spark) SVG, anchored **below-right of the cursor tip** so it
+never covers the hotspot.
+
+- Shape: inline SVG `<path d="M7 0 L8.2 5.8 L14 7 …">`, 14×14 px, radial
+  gradient white → cyan (`#22D3EE`) → blue (`#0EA5E9`).
+- Position: `transform: translate(8px, 8px)` from the cursor tip (previously
+  `translate(-50%, -50%)` which centred it on the cursor).
+- Animation: slow 7 s full rotation (`sparkSpin`) + 2 s glow pulse
+  (`sparkPulse`) via `drop-shadow` filter — no `::after` ring.
+- Opacity when visible: `0.82` (was `1.0`).
+- `prefers-reduced-motion`: both animations disabled, static position kept.
+
+---
+
 ### feat/cursor-visual-states — refactor: replace cursor companion pill with bare animations
 **Time:** ~ (local, UTC+3)
 **Branch:** `feat/cursor-visual-states`
