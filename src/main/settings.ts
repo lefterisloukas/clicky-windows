@@ -53,6 +53,7 @@ interface SettingsSchema {
   // UI
   alwaysOnTop: boolean;
   cursorBuddyEnabled: boolean;
+  overlayCaptionEnabled: boolean;
   popoverWidth: number;
   popoverHeight: number;
 
@@ -84,6 +85,7 @@ const defaults: SettingsSchema = {
   pushToTalkHotkey: "Ctrl+Shift",
   alwaysOnTop: false,
   cursorBuddyEnabled: true,
+  overlayCaptionEnabled: true,
   popoverWidth: 380,
   popoverHeight: 600,
   aiProvider: "anthropic",

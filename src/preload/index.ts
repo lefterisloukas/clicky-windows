@@ -91,6 +91,12 @@ contextBridge.exposeInMainWorld("clicky", {
     ipcRenderer.on("chat:stream-end", (_event, data) => callback(data));
   },
 
+  // Fires when TTS playback for a query has fully drained — lets the overlay
+  // response caption linger exactly as long as the voice, not the text reveal.
+  onSpeakingEnded: (callback: () => void) => {
+    ipcRenderer.on("companion:speaking-ended", () => callback());
+  },
+
   // Settings
   getSettings: () => ipcRenderer.invoke("settings:getAll"),
   setSetting: (key: string, value: unknown) =>
