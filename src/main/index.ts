@@ -33,6 +33,9 @@ async function fetchGeminiModels(
   if (!apiKey) {
     return { ok: false, error: "Gemini API key is empty" };
   }
+  if (baseUrl && !baseUrl.startsWith("https://")) {
+    return { ok: false, error: "Custom base URL must start with https://" };
+  }
   const root = (baseUrl || GEMINI_DEFAULT_BASE_URL).replace(/\/+$/, "");
   const url = `${root}/v1beta/models?key=${encodeURIComponent(apiKey)}`;
   try {
@@ -80,6 +83,9 @@ async function fetchGroqModels(
 ): Promise<{ ok: boolean; error?: string; models?: string[] }> {
   if (!apiKey) {
     return { ok: false, error: "Groq API key is empty" };
+  }
+  if (baseUrl && !baseUrl.startsWith("https://")) {
+    return { ok: false, error: "Custom base URL must start with https://" };
   }
   const url = `${(baseUrl || GROQ_DEFAULT_BASE_URL).replace(/\/+$/, "")}/models`;
   try {
@@ -285,10 +291,16 @@ const POPOVER_MIN_WIDTH = 320;
 const POPOVER_MIN_HEIGHT = 420;
 let lastPopoverHide = 0;
 
+function savePopoverSize(win: BrowserWindow): void {
+  const { width, height } = win.getBounds();
+  settings.set("popoverWidth", width);
+  settings.set("popoverHeight", height);
+}
+
 function createPopover(): BrowserWindow {
   const win = new BrowserWindow({
-    width: Math.max(POPOVER_MIN_WIDTH, settings.get("popoverWidth") || 380),
-    height: Math.max(POPOVER_MIN_HEIGHT, settings.get("popoverHeight") || 600),
+    width: Math.max(POPOVER_MIN_WIDTH, settings.get("popoverWidth")),
+    height: Math.max(POPOVER_MIN_HEIGHT, settings.get("popoverHeight")),
     minWidth: POPOVER_MIN_WIDTH,
     minHeight: POPOVER_MIN_HEIGHT,
     show: false,
@@ -307,13 +319,9 @@ function createPopover(): BrowserWindow {
   });
 
   win.loadFile(path.join(__dirname, "..", "..", "src", "renderer", "settings", "index.html"));
-  // Dismiss when focus leaves the popover (clicking anywhere else). Remember
-  // the current size so reopening keeps the dimensions the user chose.
+  // Dismiss when focus leaves the popover (clicking anywhere else).
   win.on("blur", () => {
     if (!win.isDestroyed() && win.isVisible()) {
-      const { width, height } = win.getBounds();
-      settings.set("popoverWidth", width);
-      settings.set("popoverHeight", height);
       win.hide();
       lastPopoverHide = Date.now();
     }
@@ -363,6 +371,7 @@ function togglePopover(): void {
     !settingsWindow.isDestroyed() &&
     settingsWindow.isVisible()
   ) {
+    savePopoverSize(settingsWindow);
     settingsWindow.hide();
     lastPopoverHide = Date.now();
     return;
@@ -466,32 +475,29 @@ function setupIPC(): void {
     }
   });
 
-  // Verify a Groq API key by hitting GET /models. On success, refresh the
+  // Shared helper: fetch + cache Groq model list. Used by both the test-key
+  // button and the background auto-refresh (identical behaviour).
+  async function refreshGroqCache(apiKey: string, baseUrl?: string) {
+    const result = await fetchGroqModels(apiKey, baseUrl);
+    if (result.ok && result.models) {
+      settings.set("groqSttModelList", result.models);
+      settings.set("groqSttModelListFetchedAt", Date.now());
+    }
+    return result;
+  }
+
+  // Verify a Groq API key by hitting GET /models. On success, refreshes the
   // cached model list (deduped, whisper-large-v3-turbo pinned first).
   ipcMain.handle(
     "settings:testGroqKey",
-    async (_event, apiKey: string, baseUrl?: string) => {
-      const result = await fetchGroqModels(apiKey, baseUrl);
-      if (result.ok && result.models) {
-        settings.set("groqSttModelList", result.models);
-        settings.set("groqSttModelListFetchedAt", Date.now());
-      }
-      return result;
-    }
+    (_event, apiKey: string, baseUrl?: string) => refreshGroqCache(apiKey, baseUrl)
   );
 
   // Force a refresh of the cached Groq model list (used by auto-refresh on
   // settings panel open, when the cache is older than 5 days).
   ipcMain.handle(
     "settings:refreshGroqModelList",
-    async (_event, apiKey: string, baseUrl?: string) => {
-      const result = await fetchGroqModels(apiKey, baseUrl);
-      if (result.ok && result.models) {
-        settings.set("groqSttModelList", result.models);
-        settings.set("groqSttModelListFetchedAt", Date.now());
-      }
-      return result;
-    }
+    (_event, apiKey: string, baseUrl?: string) => refreshGroqCache(apiKey, baseUrl)
   );
 
   // Verify a Gemini API key by hitting the list-models endpoint. On success,
@@ -531,13 +537,11 @@ function setupIPC(): void {
   // Open the chat window from a renderer — e.g. the popover's "Open chat" link.
   ipcMain.handle("window:openChat", () => openChatWindow());
 
-  // Hide the popover back to the tray (the popover's close button). Mirrors
-  // the blur-dismiss, and remembers the current size on the way out.
+  // Hide the popover back to the tray (the popover's close button). Saves
+  // size so reopening restores the dimensions the user chose.
   ipcMain.handle("window:hidePopover", () => {
     if (settingsWindow && !settingsWindow.isDestroyed()) {
-      const { width, height } = settingsWindow.getBounds();
-      settings.set("popoverWidth", width);
-      settings.set("popoverHeight", height);
+      savePopoverSize(settingsWindow);
       settingsWindow.hide();
       lastPopoverHide = Date.now();
     }
