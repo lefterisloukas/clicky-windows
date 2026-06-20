@@ -4,6 +4,7 @@ import { HotkeyManager } from "./hotkey";
 import { AudioCapture } from "./audio";
 import { SettingsStore } from "./settings";
 import { CompanionManager } from "./companion";
+import { prewarmKokoro } from "../services/tts/kokoro";
 import path from "path";
 
 let chatWindow: BrowserWindow | null = null;
@@ -457,6 +458,12 @@ function setupIPC(): void {
         }
       }
     }
+
+    // Switching to (or enabling) Kokoro — warm its model now so the next reply
+    // doesn't pay the cold-load cost.
+    if (key === "ttsProvider" || key === "ttsEnabled" || key === "kokoroQuality") {
+      maybePrewarmKokoro();
+    }
   });
 
   // Verify a Groq API key by hitting GET /models. On success, refresh the
@@ -537,12 +544,27 @@ function setupIPC(): void {
   });
 }
 
+// If Kokoro (local neural TTS) is the active provider, load its model in the
+// background so the first reply doesn't stall ~1s on the cold load. Best-effort:
+// if the model isn't installed the rejection is swallowed and the real error
+// still surfaces at speak time.
+function maybePrewarmKokoro(): void {
+  if (settings.get("ttsEnabled") && settings.get("ttsProvider") === "kokoro") {
+    prewarmKokoro(settings.get("kokoroQuality")).catch(() => {
+      /* model not installed yet — ignore; surfaces at speak time */
+    });
+  }
+}
+
 app.whenReady().then(() => {
   // Hide from taskbar — tray only
   app.dock?.hide?.();
 
   overlayWindows = createOverlayWindows();
   companion = new CompanionManager(settings, overlayWindows);
+
+  // Warm the local TTS model ahead of the first reply if it's selected.
+  maybePrewarmKokoro();
 
   const audioCapture = new AudioCapture(settings);
   audioCapture.setCompanion(companion);

@@ -8,6 +8,14 @@ interface ChatQueryParams {
   screenshots: ScreenshotResult[];
   cursorPosition: { x: number; y: number };
   conversationHistory: Array<{ role: "user" | "assistant"; content: string }>;
+  /** Called with each text fragment as it streams in. Enables streaming. */
+  onDelta?: (chunk: string) => void;
+  /**
+   * Abort an in-flight request. The @google/genai SDK takes no AbortSignal, so
+   * streaming aborts cooperatively (checked between chunks); a cancelled query
+   * keeps consuming until the next chunk arrives.
+   */
+  signal?: AbortSignal;
 }
 
 interface ChatResponse {
@@ -120,16 +128,43 @@ export class GeminiChatService {
       config.thinkingConfig = thinkingConfig;
     }
 
+    // Non-streaming path: single request, full response.
+    if (!params.onDelta) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents,
+          config,
+        });
+        return { text: response.text ?? "" };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`Gemini API error: ${msg}`);
+      }
+    }
+
+    // Streaming path: iterate the SDK's async stream, accumulating chunk text.
+    let full = "";
     try {
-      const response = await ai.models.generateContent({
+      const stream = await ai.models.generateContentStream({
         model,
         contents,
         config,
       });
-      return { text: response.text ?? "" };
+      for await (const chunk of stream) {
+        if (params.signal?.aborted) break;
+        const piece = chunk.text ?? "";
+        if (piece) {
+          full += piece;
+          params.onDelta(piece);
+        }
+      }
     } catch (err: unknown) {
+      if (full) return { text: full };
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(`Gemini API error: ${msg}`);
     }
+
+    return { text: full };
   }
 }

@@ -1,4 +1,5 @@
 import { TTSProvider } from "./interface";
+import { splitText } from "../incremental";
 import { app } from "electron";
 import { exec } from "child_process";
 import * as fs from "fs";
@@ -84,6 +85,18 @@ function loadModel(dtype: "q4" | "q8"): Promise<unknown> {
   // If the load fails, drop it so a later call can retry.
   promise.catch(() => modelPromises.delete(dtype));
   return promise;
+}
+
+/**
+ * Warm the Kokoro model into the module-level singleton ahead of the first
+ * `speak()` call, so the first reply doesn't pay the ~1s cold-load cost. Safe
+ * to call multiple times (loadModel is cached/idempotent) and best-effort — if
+ * the model isn't installed it rejects, which the caller should swallow (the
+ * real error surfaces at speak time, exactly as before).
+ */
+export function prewarmKokoro(quality: KokoroQuality = "fast"): Promise<unknown> {
+  const dtype = DTYPE_FOR_QUALITY[quality] ?? DTYPE_FOR_QUALITY.fast;
+  return loadModel(dtype);
 }
 
 /**
@@ -178,39 +191,7 @@ export class KokoroTTS implements TTSProvider {
   }
 
   private splitText(text: string): string[] {
-    if (text.length <= MAX_CHARS) return [text];
-
-    const chunks: string[] = [];
-    let remaining = text;
-
-    while (remaining.length > 0) {
-      if (remaining.length <= MAX_CHARS) {
-        chunks.push(remaining);
-        break;
-      }
-
-      let breakAt = -1;
-      const searchRange = remaining.substring(0, MAX_CHARS);
-
-      for (const sep of [". ", "! ", "? ", ".\n", "!\n", "?\n"]) {
-        const idx = searchRange.lastIndexOf(sep);
-        if (idx > breakAt) breakAt = idx + sep.length;
-      }
-      if (breakAt <= 0) {
-        const commaIdx = searchRange.lastIndexOf(", ");
-        if (commaIdx > 0) breakAt = commaIdx + 2;
-      }
-      if (breakAt <= 0) {
-        const spaceIdx = searchRange.lastIndexOf(" ");
-        if (spaceIdx > 0) breakAt = spaceIdx + 1;
-      }
-      if (breakAt <= 0) breakAt = MAX_CHARS;
-
-      chunks.push(remaining.substring(0, breakAt).trim());
-      remaining = remaining.substring(breakAt).trim();
-    }
-
-    return chunks;
+    return splitText(text, MAX_CHARS);
   }
 
   stop(): void {

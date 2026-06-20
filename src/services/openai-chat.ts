@@ -1,12 +1,17 @@
 import { SettingsStore } from "../main/settings";
 import { ScreenshotResult } from "../main/screenshot";
 import { SYSTEM_PROMPT } from "./prompt";
+import { readSSE } from "./streaming";
 
 interface ChatQueryParams {
   transcript: string;
   screenshots: ScreenshotResult[];
   cursorPosition: { x: number; y: number };
   conversationHistory: Array<{ role: "user" | "assistant"; content: string }>;
+  /** Called with each text fragment as it streams in. Enables streaming. */
+  onDelta?: (chunk: string) => void;
+  /** Abort an in-flight request (e.g. a newer query superseded this one). */
+  signal?: AbortSignal;
 }
 
 interface ChatResponse {
@@ -69,11 +74,14 @@ export class OpenAIChatService {
       }
     }
 
+    const stream = !!params.onDelta;
+
     const body: Record<string, unknown> = {
       model,
       max_completion_tokens: 1024,
       messages,
     };
+    if (stream) body.stream = true;
 
     // Reasoning effort applies only to reasoning-capable models (o-series,
     // gpt-5.x). Sending it to a chat model like gpt-4o triggers a 400, so gate
@@ -89,6 +97,7 @@ export class OpenAIChatService {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(body),
+      signal: params.signal,
     });
 
     if (!response.ok) {
@@ -96,11 +105,31 @@ export class OpenAIChatService {
       throw new Error(`OpenAI API error (${response.status}): ${error}`);
     }
 
-    const data = await response.json() as {
-      choices: Array<{ message: { content: string } }>;
-    };
+    // Non-streaming path: parse the full JSON body as before.
+    if (!stream) {
+      const data = (await response.json()) as {
+        choices: Array<{ message: { content: string } }>;
+      };
+      return { text: data.choices[0]?.message?.content || "" };
+    }
 
-    const text = data.choices[0]?.message?.content || "";
-    return { text };
+    // Streaming path: accumulate `choices[0].delta.content`.
+    let full = "";
+    try {
+      await readSSE(response, (ev) => {
+        const piece = (
+          ev as { choices?: Array<{ delta?: { content?: string } }> }
+        ).choices?.[0]?.delta?.content;
+        if (piece) {
+          full += piece;
+          params.onDelta!(piece);
+        }
+      });
+    } catch (err) {
+      if (full) return { text: full };
+      throw err;
+    }
+
+    return { text: full };
   }
 }

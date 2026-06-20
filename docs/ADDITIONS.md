@@ -8,6 +8,152 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-20
 
+### feat/streaming-inference — perf: reuse AI provider instances across queries
+**Time:** ~ (local, UTC+3)
+**Branch:** `feat/streaming-inference`
+**Components:** `src/main/companion.ts`
+
+**Old behavior:** `getAIProvider()` constructed a fresh `OpenAIChatService`,
+`OpenRouterChatService`, `GeminiChatService`, or `ClaudeService` on every query,
+and `refineTagAsync` constructed a fresh `ClaudeService` per POINT tag. Each new
+instance meant a cold HTTP connection (TCP/TLS handshake, no HTTP2 reuse), adding
+small but avoidable latency on every request.
+
+**New behavior:** `CompanionManager` now lazily caches one instance of each
+provider. The cached services still read `settings.get(...)` fresh on every call,
+so model, API key, and proxy changes are picked up without recreating the
+instance. The second-pass refinement path shares the same cached `ClaudeService`
+instead of building its own.
+
+**Verification**
+- `npx tsc --noEmit` exits 0.
+
+---
+
+### feat/streaming-inference — post-review fixes for streaming reliability
+**Time:** ~ (local, UTC+3)
+**Branch:** `feat/streaming-inference`
+**Components:** `src/renderer/chat/index.html`, `src/main/companion.ts`, `src/services/incremental.ts`
+
+Addressed three issues found during PR review of the streaming-inference work:
+
+1. **Stale chat bubbles on query supersession.** When a new query cancelled an
+   in-flight one, the old streaming bubble was left in the DOM because
+   `chat:stream-start` created a new bubble without removing the existing one.
+   `src/renderer/chat/index.html` now removes any existing streaming bubble
+   before opening a new one.
+2. **Empty assistant replies dropped the user turn from history.**
+   `src/main/companion.ts` previously skipped committing *both* turns when the
+   model returned an empty response, silently erasing the user's question from
+   later context. It now always commits the user turn and only skips an empty
+   assistant turn.
+3. **Unbounded raw buffer in sentence extractor.** A long unclosed `[` in
+   streamed text (e.g. markdown or code) could cause `IncrementalSentenceExtractor`
+   to buffer `raw` without limit. `src/services/incremental.ts` now caps the raw
+   buffer and flushes everything before the last `[` once it exceeds twice the
+   sentence chunk size.
+
+All three fixes pass `npm run typecheck` and `npm run lint`.
+
+---
+
+### feat/streaming-inference — stream the LLM response end-to-end (text + cursor + voice)
+**Time:** ~ (local, UTC+3)
+**Branch:** `feat/streaming-inference`
+**Author:** original streaming-inference implementer (previous agent — not the current user)
+**Components:** `src/main/companion.ts`, `src/services/{claude,openai-chat,openrouter-chat,gemini-chat}.ts`, `src/services/{streaming,incremental}.ts`, `src/services/tts/queue.ts`, `src/preload/index.ts`, `src/renderer/{overlay,chat}/index.html`
+
+Made the whole inference pipeline incremental so the user gets feedback while
+the model is still generating, instead of staring at a spinner for the entire
+response.
+
+**Old behavior**
+- `processQuery` did `await ai.query()` for the *entire* response (non-streaming
+  on all four providers), then parsed all POINT tags, then ran a *blocking*
+  Claude refinement pass over all of them, then sent points to the overlay, then
+  started TTS on the full text.
+- Nothing appeared until everything finished: no chat text, no cursor, no voice
+  until the full generation + refinement round-trips completed.
+- The overlay received one batched array of points; chat got the reply only as
+  the IPC return value.
+
+**New behavior**
+- All four providers stream: Claude / OpenAI / OpenRouter via SSE (`stream: true`,
+  shared reader in `src/services/streaming.ts` that buffers partial lines across
+  network chunks), Gemini via `generateContentStream`. Each calls a new optional
+  `onDelta(chunk)` and still returns the full final `{text}` (used for history
+  and as a non-streaming fallback). A new `signal` aborts an in-flight request.
+- As text streams in, `companion.ts` drives three consumers:
+  - **Chat text** streams live via new `chat:stream-start` / `chat:stream-delta`
+    / `chat:stream-end` IPC events (plain text while streaming, single markdown
+    render at the end).
+  - **POINT tags** are extracted incrementally (`IncrementalPointExtractor`,
+    buffers a tag split across chunks) and each completed tag moves the overlay
+    cursor immediately. For Claude, the refinement second pass now runs
+    *concurrently* per-tag and nudges the already-shown point in place (raw →
+    refined), instead of blocking the whole reply.
+  - **TTS** speaks each completed sentence (`IncrementalSentenceExtractor`) while
+    the rest still generates, via a new `TTSQueue` that serialises `speak()`
+    calls on one provider instance (avoids each provider's `speak()`-calls-
+    `stop()` from killing the previous sentence).
+- The overlay handler is now an id-keyed queue with a minimum dwell: it preserves
+  the sequential multi-step walkthrough, updates a point in place on a
+  `kind:"refine"` message, and clears on `kind:"reset"` at the start of a query.
+- Interruption: a newer query aborts the previous fetch + stops its TTS via an
+  `AbortController`/`QuerySession`; conversation history is only committed on
+  success (built locally first) so a cancelled/failed query leaves no dangling
+  turn.
+- Shared `splitText` extracted from `tts/kokoro.ts` + `tts/openai.ts` into
+  `src/services/incremental.ts` (behavior-neutral dedupe).
+- Note: Gemini's SDK exposes no AbortSignal, so its streaming aborts
+  cooperatively (checked between chunks).
+
+**Verification**
+- `npx tsc` clean. Manual: Gemini/OpenAI with Kokoro TTS — chat text appears
+  token-by-token, cursor moves on the first POINT tag before the sentence ends,
+  voice starts on the first completed sentence. Claude — cursor appears raw then
+  nudges to the refined spot. Multi-monitor routing preserved via `displayIndex`.
+
+---
+
+### feat/streaming-inference — warm up Kokoro TTS at startup
+**Time:** ~ (local, UTC+3)
+**Branch:** `feat/streaming-inference`
+**Author:** original streaming-inference implementer (previous agent — not the current user)
+**Components:** `src/services/tts/kokoro.ts`, `src/main/index.ts`
+
+**Old behavior:** the Kokoro model loaded lazily on the first `speak()` call, so
+the first spoken reply stalled ~1s (q4) on the cold load.
+
+**New behavior:** added `prewarmKokoro(quality)` which triggers the existing
+cached `loadModel`. `index.ts` calls it at startup (and on switching the TTS
+provider / quality to Kokoro) when Kokoro is the active provider, so the model
+is already resident before the first reply. Best-effort — if the model isn't
+installed the rejection is swallowed and the real error still surfaces at speak
+time as before.
+
+---
+
+### feat/streaming-inference — capture the screen in parallel with transcription
+**Time:** ~ (local, UTC+3)
+**Branch:** `feat/streaming-inference`
+**Author:** original streaming-inference implementer (previous agent — not the current user)
+**Components:** `src/main/audio.ts`, `src/main/companion.ts`
+
+**Old behavior:** for voice queries, `audio.ts` awaited transcription and only
+then called `processQuery`, which captured the screen — so capture (~0.3–1s) sat
+serially after transcription.
+
+**New behavior:** `audio:recording-complete` kicks off a new public
+`CompanionManager.captureScreens()` the moment the mic stops (the screen state
+the user is asking about) in parallel with transcription, then passes the result
+into `processQuery(transcript, prefetched?)`. Capture now overlaps transcription
+instead of adding to the serial path. If parallel capture fails it falls back to
+inline capture. The text (`chat:query`) path is unchanged — no transcription to
+overlap.
+
+---
+
 ### feat/cursor-visual-states — refactor: replace cursor-buddy circle with 4-pointed spark
 **Time:** ~ (local, UTC+3)
 **Branch:** `feat/cursor-visual-states`

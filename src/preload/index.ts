@@ -15,14 +15,20 @@ contextBridge.exposeInMainWorld("clicky", {
     });
   },
 
-  // Overlay pointing
+  // Overlay pointing — streamed one point at a time. `kind:"raw"` shows the
+  // model's first estimate; `kind:"refine"` updates the same id in place;
+  // `kind:"reset"` clears the overlay at the start of a new query.
   onPoint: (
-    callback: (
-      tags: Array<{ x: number; y: number; label: string; screen: number }>
-    ) => void
+    callback: (point: {
+      id?: string;
+      x?: number;
+      y?: number;
+      label?: string;
+      kind: "raw" | "refine" | "reset";
+    }) => void
   ) => {
-    ipcRenderer.on("overlay:point", (_event, tags) => {
-      callback(tags);
+    ipcRenderer.on("overlay:point", (_event, point) => {
+      callback(point);
     });
   },
 
@@ -68,6 +74,21 @@ contextBridge.exposeInMainWorld("clicky", {
     ipcRenderer.on("companion:stage", (_event, data) => {
       callback(data);
     });
+  },
+
+  // Streaming chat response: start (open bubble) → delta (append text) → end
+  // (final full text for markdown render). `error` is set on the end event if
+  // the query failed.
+  onStreamStart: (callback: () => void) => {
+    ipcRenderer.on("chat:stream-start", () => callback());
+  },
+  onStreamDelta: (callback: (data: { text: string }) => void) => {
+    ipcRenderer.on("chat:stream-delta", (_event, data) => callback(data));
+  },
+  onStreamEnd: (
+    callback: (data: { text: string; error?: string }) => void
+  ) => {
+    ipcRenderer.on("chat:stream-end", (_event, data) => callback(data));
   },
 
   // Settings

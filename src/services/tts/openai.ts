@@ -1,4 +1,5 @@
 import { TTSProvider } from "./interface";
+import { splitText } from "../incremental";
 import { exec } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -93,43 +94,7 @@ export class OpenAITTS implements TTSProvider {
   }
 
   private splitText(text: string): string[] {
-    if (text.length <= MAX_CHARS) return [text];
-
-    const chunks: string[] = [];
-    let remaining = text;
-
-    while (remaining.length > 0) {
-      if (remaining.length <= MAX_CHARS) {
-        chunks.push(remaining);
-        break;
-      }
-
-      // Find a good break point: sentence end, then comma, then space
-      let breakAt = -1;
-      const searchRange = remaining.substring(0, MAX_CHARS);
-
-      // Try sentence boundaries
-      for (const sep of [". ", "! ", "? ", ".\n", "!\n", "?\n"]) {
-        const idx = searchRange.lastIndexOf(sep);
-        if (idx > breakAt) breakAt = idx + sep.length;
-      }
-
-      // Fall back to comma or space
-      if (breakAt <= 0) {
-        const commaIdx = searchRange.lastIndexOf(", ");
-        if (commaIdx > 0) breakAt = commaIdx + 2;
-      }
-      if (breakAt <= 0) {
-        const spaceIdx = searchRange.lastIndexOf(" ");
-        if (spaceIdx > 0) breakAt = spaceIdx + 1;
-      }
-      if (breakAt <= 0) breakAt = MAX_CHARS;
-
-      chunks.push(remaining.substring(0, breakAt).trim());
-      remaining = remaining.substring(breakAt).trim();
-    }
-
-    return chunks;
+    return splitText(text, MAX_CHARS);
   }
 
   stop(): void {

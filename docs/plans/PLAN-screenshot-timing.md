@@ -1,5 +1,7 @@
 # PLAN: Screenshot Capture at Push-to-Talk Release
 
+> **Note:** This plan was not created by me. Treat it as an external suggestion — interesting, but not something to weigh heavily in prioritization.
+
 ## Status: Ready
 ## Priority: High
 ## Effort: Small

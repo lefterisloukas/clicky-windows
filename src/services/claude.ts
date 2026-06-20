@@ -1,12 +1,17 @@
 import { SettingsStore } from "../main/settings";
 import { ScreenshotResult } from "../main/screenshot";
 import { SYSTEM_PROMPT } from "./prompt";
+import { readSSE } from "./streaming";
 
 interface ClaudeQueryParams {
   transcript: string;
   screenshots: ScreenshotResult[];
   cursorPosition: { x: number; y: number };
   conversationHistory: Array<{ role: "user" | "assistant"; content: string }>;
+  /** Called with each text fragment as it streams in. Enables streaming. */
+  onDelta?: (chunk: string) => void;
+  /** Abort an in-flight request (e.g. a newer query superseded this one). */
+  signal?: AbortSignal;
 }
 
 interface ClaudeResponse {
@@ -77,6 +82,8 @@ export class ClaudeService {
         : entry.content,
     }));
 
+    const stream = !!params.onDelta;
+
     const response = await fetch(`${baseUrl}/v1/messages`, {
       method: "POST",
       headers: {
@@ -89,7 +96,9 @@ export class ClaudeService {
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
         messages,
+        ...(stream ? { stream: true } : {}),
       }),
+      signal: params.signal,
     });
 
     if (!response.ok) {
@@ -97,15 +106,45 @@ export class ClaudeService {
       throw new Error(`Claude API error (${response.status}): ${error}`);
     }
 
-    const data = await response.json() as {
-      content: Array<{ type: string; text?: string }>;
-    };
-    const text = data.content
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("");
+    // Non-streaming path: parse the full JSON body as before.
+    if (!stream) {
+      const data = (await response.json()) as {
+        content: Array<{ type: string; text?: string }>;
+      };
+      const text = data.content
+        .filter((block) => block.type === "text")
+        .map((block) => block.text)
+        .join("");
+      return { text };
+    }
 
-    return { text };
+    // Streaming path: accumulate `content_block_delta` text_delta events.
+    let full = "";
+    try {
+      await readSSE(response, (ev) => {
+        const e = ev as {
+          type?: string;
+          delta?: { type?: string; text?: string };
+          error?: { message?: string };
+        };
+        if (e.type === "content_block_delta" && e.delta?.type === "text_delta") {
+          const piece = e.delta.text || "";
+          if (piece) {
+            full += piece;
+            params.onDelta!(piece);
+          }
+        } else if (e.type === "error") {
+          throw new Error(e.error?.message || "Claude stream error");
+        }
+      });
+    } catch (err) {
+      // If we got partial text before the failure, return it rather than losing
+      // everything; otherwise surface the error.
+      if (full) return { text: full };
+      throw err;
+    }
+
+    return { text: full };
   }
 
   /**

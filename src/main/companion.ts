@@ -9,7 +9,12 @@ import {
   TranscriptionProvider,
   createTranscriptionProvider,
 } from "../services/transcription/interface";
-import { createTTSProvider } from "../services/tts/interface";
+import {
+  IncrementalPointExtractor,
+  IncrementalSentenceExtractor,
+  RawPointTag,
+} from "../services/incremental";
+import { TTSQueue } from "../services/tts/queue";
 
 interface ConversationEntry {
   role: "user" | "assistant";
@@ -22,10 +27,49 @@ interface AIProvider {
     screenshots: ScreenshotResult[];
     cursorPosition: { x: number; y: number };
     conversationHistory: ConversationEntry[];
+    onDelta?: (chunk: string) => void;
+    signal?: AbortSignal;
   }): Promise<{ text: string }>;
 }
 
+/** Captured screen state — may be pre-fetched in parallel with transcription. */
+export interface CapturedScreens {
+  screenshots: ScreenshotResult[];
+  cursorPosition: { x: number; y: number };
+}
+
 const MAX_CONVERSATION_HISTORY = 10;
+
+/**
+ * A single point pushed to the overlay. `kind:"raw"` is the model's first
+ * estimate, shown immediately; `kind:"refine"` carries refined coordinates for
+ * the same `id` and updates the already-shown point in place; `kind:"reset"`
+ * clears the overlay at the start of a new query.
+ */
+interface OverlayPoint {
+  id?: string;
+  x?: number;
+  y?: number;
+  label?: string;
+  kind: "raw" | "refine" | "reset";
+}
+
+/**
+ * One in-flight query. Holds the abort controller (cancels the provider's
+ * fetch), the TTS queue, and a `cancelled` flag the async refinement calls and
+ * streaming callbacks check before touching the UI.
+ */
+class QuerySession {
+  readonly controller = new AbortController();
+  cancelled = false;
+  tts: TTSQueue | null = null;
+
+  cancel(): void {
+    this.cancelled = true;
+    this.controller.abort();
+    this.tts?.cancel();
+  }
+}
 
 /** Human-readable name for an AI provider id, for logs. */
 function providerLabel(provider: string): string {
@@ -46,7 +90,10 @@ function providerLabel(provider: string): string {
 /**
  * Central orchestrator — mirrors CompanionManager.swift from macOS version.
  *
- * Flow: voice → screenshot → ai (anthropic or openai) → tts → overlay pointing
+ * Flow: voice → screenshot → ai (streaming) → tts + overlay pointing, all
+ * incremental: text streams to chat, each completed POINT tag moves the cursor
+ * immediately (Claude refines it concurrently), and each completed sentence is
+ * spoken while the rest of the reply is still generating.
  */
 export class CompanionManager {
   private settings: SettingsStore;
@@ -54,6 +101,16 @@ export class CompanionManager {
   private transcription: TranscriptionProvider;
   private conversationHistory: ConversationEntry[] = [];
   private overlayWindows: BrowserWindow[] = [];
+  private activeSession: QuerySession | null = null;
+  private pointSeq = 0;
+
+  // Reuse provider instances across queries so TCP/TLS/HTTP2 connections stay
+  // warm. Each service reads settings fresh on every request, so model/key
+  // changes are picked up without needing to recreate the instance.
+  private claudeProvider: ClaudeService | null = null;
+  private openaiProvider: OpenAIChatService | null = null;
+  private openrouterProvider: OpenRouterChatService | null = null;
+  private geminiProvider: GeminiChatService | null = null;
 
   constructor(settings: SettingsStore, overlayWindows: BrowserWindow[]) {
     this.settings = settings;
@@ -65,212 +122,283 @@ export class CompanionManager {
   private getAIProvider(): AIProvider {
     const provider = this.settings.get("aiProvider");
     if (provider === "openai") {
-      return new OpenAIChatService(this.settings);
+      return (this.openaiProvider ??= new OpenAIChatService(this.settings));
     }
     if (provider === "openrouter") {
-      return new OpenRouterChatService(this.settings);
+      return (this.openrouterProvider ??= new OpenRouterChatService(this.settings));
     }
     if (provider === "gemini") {
-      return new GeminiChatService(this.settings);
+      return (this.geminiProvider ??= new GeminiChatService(this.settings));
     }
-    return new ClaudeService(this.settings);
+    return this.getClaudeService();
+  }
+
+  private getClaudeService(): ClaudeService {
+    return (this.claudeProvider ??= new ClaudeService(this.settings));
   }
 
   private broadcastStage(stage: string, label: string): void {
+    this.notifyAll("companion:stage", { stage, label });
+  }
+
+  /** Send an event to every renderer window (chat status, streaming text). */
+  private notifyAll(channel: string, data: unknown): void {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
-        win.webContents.send("companion:stage", { stage, label });
+        win.webContents.send(channel, data);
       }
     }
   }
 
   /**
-   * Process a user query: capture screen, send to AI, speak response.
+   * Capture all screens + cursor position. Public so callers (e.g. the audio
+   * pipeline) can start this in parallel with transcription and pass the result
+   * into processQuery, keeping it off the serial path.
    */
-  async processQuery(transcript: string): Promise<string> {
-    try {
-    // 1. Capture screenshots
-    this.broadcastStage("capturing", "Reading screen...");
+  async captureScreens(): Promise<CapturedScreens> {
     const screenshots = await this.screenCapture.captureAllScreens();
-    const cursorPos = this.screenCapture.getCursorPosition();
+    const cursorPosition = this.screenCapture.getCursorPosition();
+    return { screenshots, cursorPosition };
+  }
 
-    // 2. Send to AI provider with conversation history
-    this.conversationHistory.push({ role: "user", content: transcript });
+  /**
+   * Process a user query: capture screen, stream the AI response, and as it
+   * arrives push live text to chat, move the overlay cursor per POINT tag, and
+   * speak each completed sentence. Returns the full final text.
+   *
+   * @param prefetched optional screen capture already taken in parallel with
+   *                   transcription; if omitted, captured inline here.
+   */
+  async processQuery(
+    transcript: string,
+    prefetched?: CapturedScreens
+  ): Promise<string> {
+    // A newer query supersedes any in-flight one: abort its fetch, stop its TTS.
+    this.activeSession?.cancel();
+    const session = new QuerySession();
+    this.activeSession = session;
 
-    this.broadcastStage("querying", "Analyzing...");
-    const ai = this.getAIProvider();
-    const response = await ai.query({
-      transcript,
-      screenshots,
-      cursorPosition: cursorPos,
-      conversationHistory: this.conversationHistory,
-    });
-
-    this.conversationHistory.push({ role: "assistant", content: response.text });
-
-    // Trim history
-    if (this.conversationHistory.length > MAX_CONVERSATION_HISTORY * 2) {
-      this.conversationHistory = this.conversationHistory.slice(-MAX_CONVERSATION_HISTORY * 2);
-    }
-
-    // 3a. Parse raw POINT tags (still in image-pixel space).
-    const rawTags = this.parseRawPointTags(response.text);
     const aiProviderName = this.settings.get("aiProvider");
-    console.log(`[Clicky] ${providerLabel(aiProviderName)} response:`, response.text);
-    console.log("[Clicky] Raw POINT tags:", JSON.stringify(rawTags));
 
-    // 3b. Second-pass refinement: only Claude for now.
-    //     For each tag, crop ~400px around the estimated point and ask the
-    //     model to return the precise pixel center. Falls back to the raw
-    //     tag if anything goes wrong.
-    let refinedTags = rawTags;
-    if (aiProviderName === "anthropic" && rawTags.length > 0) {
-      this.broadcastStage("refining", "Refining points...");
-      const claude = new ClaudeService(this.settings);
-      refinedTags = await Promise.all(
-        rawTags.map(async (tag) => {
-          const shot = screenshots[tag.screen] || screenshots[0];
-          if (!shot) return tag;
-          try {
-            // 300 imageDim px — small enough to reduce ambiguity with
-            // neighboring similar elements (e.g. like/dislike), large enough
-            // to give context. At native DPI this is a much sharper patch
-            // than cropping the downsampled pass-1 image.
-            const crop = cropScreenshotRegion(shot, tag.x, tag.y, 300);
-            const refined = await claude.refinePoint(
-              crop.data,
-              crop.claudeSize.w,
-              crop.claudeSize.h,
-              tag.label
-            );
-            if (refined) {
-              // Refined coords live in native crop-pixel space. Map back to
-              // imageDimensions (pass-1) space so later scaling to display
-              // px works consistently.
-              const imgX = crop.origin.x + refined.x / crop.pxPerImageDim;
-              const imgY = crop.origin.y + refined.y / crop.pxPerImageDim;
-              console.log(
-                `[Clicky] Refined "${tag.label}": (${tag.x},${tag.y}) -> (${Math.round(imgX)},${Math.round(imgY)})`
-              );
-              return { ...tag, x: Math.round(imgX), y: Math.round(imgY) };
-            }
-          } catch (err) {
-            console.warn(
-              `[Clicky] Refinement failed for "${tag.label}":`,
-              err instanceof Error ? err.message : err
-            );
+    try {
+      // 1. Capture (reuse the parallel pre-fetch if the caller provided one).
+      this.broadcastStage("capturing", "Reading screen...");
+      const { screenshots, cursorPosition } =
+        prefetched ?? (await this.captureScreens());
+      if (session.cancelled) return "";
+
+      // 2. Build the request history WITHOUT mutating the shared history yet —
+      //    we only commit the turn pair on success, so a cancelled/failed query
+      //    never leaves a dangling user turn behind.
+      const pendingHistory: ConversationEntry[] = [
+        ...this.conversationHistory,
+        { role: "user", content: transcript },
+      ];
+
+      this.broadcastStage("querying", "Analyzing...");
+      const ai = this.getAIProvider();
+
+      // 3. Streaming consumers.
+      const pointEx = new IncrementalPointExtractor();
+      const sentenceEx = new IncrementalSentenceExtractor();
+      if (this.settings.get("ttsEnabled")) {
+        session.tts = new TTSQueue(this.settings);
+      }
+
+      // Clear any stale points from a previous query, then open the chat bubble.
+      this.resetOverlays();
+      this.notifyAll("chat:stream-start", {});
+
+      const onDelta = (chunk: string) => {
+        if (session.cancelled) return;
+
+        // 3a. Live text to the chat window (POINT tags stripped renderer-side).
+        this.notifyAll("chat:stream-delta", { text: chunk });
+
+        // 3b. Points: show the raw estimate immediately; for Claude, refine
+        //     concurrently and nudge the same point into place when it returns.
+        for (const tag of pointEx.push(chunk)) {
+          const id = `p${this.pointSeq++}`;
+          const prepared = this.prepareTag(tag, screenshots);
+          if (!prepared) continue;
+          this.sendPoint(prepared.overlayIdx, {
+            id,
+            x: prepared.x,
+            y: prepared.y,
+            label: tag.label,
+            kind: "raw",
+          });
+          if (aiProviderName === "anthropic") {
+            void this.refineTagAsync(tag, id, screenshots, session);
           }
-          return tag;
-        })
-      );
-    }
+        }
 
-    // 3c. Scale image-pixel coords to display-pixel coords for the overlay.
-    const pointTags = refinedTags.map((tag) => {
-      const shot = screenshots[tag.screen] || screenshots[0];
-      if (!shot) return tag;
-      // Models routinely overshoot the image bounds by a few px (e.g. a
-      // "Next" button near the bottom comes back as y=905 on an 882-tall
-      // image). Left unchecked, the overshoot scales up and the cursor flies
-      // off the bottom/right edge and is never seen. Clamp to the last valid
-      // pixel so an overshoot snaps to the visible edge instead.
-      const clampedImgX = Math.max(0, Math.min(shot.imageDimensions.width - 1, tag.x));
-      const clampedImgY = Math.max(0, Math.min(shot.imageDimensions.height - 1, tag.y));
-      if (clampedImgX !== tag.x || clampedImgY !== tag.y) {
-        console.log(
-          `[Clicky] Clamped "${tag.label}" (${tag.x},${tag.y}) -> (${clampedImgX},${clampedImgY}) ` +
-            `to image bounds ${shot.imageDimensions.width}x${shot.imageDimensions.height}`
+        // 3c. Sentences → TTS, spoken while the rest still streams.
+        if (session.tts) {
+          for (const sentence of sentenceEx.push(chunk)) {
+            session.tts.enqueue(sentence);
+          }
+        }
+      };
+
+      const { text } = await ai.query({
+        transcript,
+        screenshots,
+        cursorPosition,
+        conversationHistory: pendingHistory,
+        onDelta,
+        signal: session.controller.signal,
+      });
+
+      // A supersede may have landed while awaiting (notably Gemini, whose abort
+      // is cooperative and resolves normally) — bail before touching UI/history.
+      if (session.cancelled) return "";
+
+      // Speak any trailing fragment that never hit a sentence boundary.
+      if (session.tts) session.tts.enqueue(sentenceEx.flush());
+
+      console.log(`[Clicky] ${providerLabel(aiProviderName)} response:`, text);
+
+      // 4. Commit the turn to shared history. Always keep the user turn so a
+      //    cancelled/failed/empty reply doesn't silently erase the question from
+      //    later context; only skip an empty assistant turn.
+      this.conversationHistory.push({ role: "user", content: transcript });
+      if (text.trim()) {
+        this.conversationHistory.push({ role: "assistant", content: text });
+      }
+      if (this.conversationHistory.length > MAX_CONVERSATION_HISTORY * 2) {
+        this.conversationHistory = this.conversationHistory.slice(
+          -MAX_CONVERSATION_HISTORY * 2
         );
       }
-      const scaleX = shot.bounds.width / shot.imageDimensions.width;
-      const scaleY = shot.bounds.height / shot.imageDimensions.height;
-      return {
-        ...tag,
-        x: Math.round(clampedImgX * scaleX),
-        y: Math.round(clampedImgY * scaleY),
-      };
-    });
-    console.log("[Clicky] Final POINT tags:", JSON.stringify(pointTags));
-    console.log("[Clicky] Overlay windows:", this.overlayWindows.length);
-    if (pointTags.length > 0 && this.overlayWindows.length > 0) {
-      // Route each tag to the overlay for its target display. Coordinates
-      // are already in that display's local CSS space (0..bounds.width).
-      //
-      // CRITICAL: `tag.screen` is the position of the screenshot in the array
-      // the model saw (screen0, screen1, ...). The overlay windows are indexed
-      // by `screen.getAllDisplays()` order. Those two indices are identical
-      // ONLY when no display was skipped during capture. If a display's capture
-      // came back empty it is dropped from `screenshots`, shifting every later
-      // array position — so we must map back through the screenshot's true
-      // `displayIndex` to pick the right overlay, never `tag.screen` directly.
-      const byOverlay = new Map<number, typeof pointTags>();
-      for (const tag of pointTags) {
-        const shot = screenshots[tag.screen] || screenshots[0];
-        const overlayIdx = shot ? shot.displayIndex : tag.screen;
-        if (overlayIdx !== tag.screen) {
-          console.log(
-            `[Clicky] POINT screen${tag.screen} (array pos) -> displayIndex ${overlayIdx} (a display was skipped during capture)`
-          );
-        }
-        const list = byOverlay.get(overlayIdx) || [];
-        list.push(tag);
-        byOverlay.set(overlayIdx, list);
-      }
-      for (const [overlayIdx, tags] of byOverlay) {
-        if (overlayIdx < 0 || overlayIdx >= this.overlayWindows.length) {
-          console.warn(
-            `[Clicky] POINT target overlay=${overlayIdx} is out of range (have ${this.overlayWindows.length} overlay windows); routing to primary display.`
-          );
-        }
-        const win = this.overlayWindows[overlayIdx] || this.overlayWindows[0];
-        if (win && !win.isDestroyed()) {
-          console.log(
-            `[Clicky] -> routing ${tags.length} point(s) to overlay ${overlayIdx} @ ${JSON.stringify(win.getBounds())}`
-          );
-          win.webContents.send("overlay:point", tags);
-        }
-      }
-    }
 
-    // 4. Speak response (strip POINT tags from spoken text) — non-blocking
-    //    Re-read settings each time so chat toggle changes take effect immediately
-    const spokenText = response.text.replace(/\[POINT:[^\]]+\]/g, "").trim();
-    const ttsOn = this.settings.get("ttsEnabled");
-    if (ttsOn && spokenText) {
-      this.broadcastStage("speaking", "Speaking...");
-      try {
-        const tts = createTTSProvider(this.settings);
-        tts.speak(spokenText).catch((err) => {
-          console.warn("TTS failed (non-fatal):", err.message);
-        });
-      } catch (err: unknown) {
-        console.warn("TTS provider creation failed:", err instanceof Error ? err.message : err);
-      }
-    }
-
-    return response.text;
+      this.notifyAll("chat:stream-end", { text });
+      return text;
+    } catch (err: unknown) {
+      // Superseded query — the newer one owns the UI now; stay silent.
+      if (session.cancelled) return "";
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[Clicky] processQuery error:", msg);
+      // Close the chat bubble so it doesn't hang in a streaming state.
+      this.notifyAll("chat:stream-end", { text: "", error: msg });
+      throw err;
     } finally {
-      this.broadcastStage("done", "");
+      // Only the still-active session clears state / hides status — a superseded
+      // session must not stomp the newer query's stage updates.
+      if (this.activeSession === session) {
+        this.activeSession = null;
+        this.broadcastStage("done", "");
+      }
     }
   }
 
-  private parseRawPointTags(
-    text: string
-  ): Array<{ x: number; y: number; label: string; screen: number }> {
-    const regex = /\[POINT:(\d+),(\d+):([^:]+):screen(\d+)\]/g;
-    const tags: Array<{ x: number; y: number; label: string; screen: number }> = [];
-    let match: RegExpExecArray | null;
+  /**
+   * Map a POINT tag (image-pixel space) to overlay display-pixel space.
+   * Returns the target overlay index plus clamped+scaled coordinates, or null
+   * if the referenced screenshot is missing.
+   *
+   * `overlayIdx` comes from the screenshot's true `displayIndex`, never the raw
+   * `screen` field — a display skipped during capture shifts array positions,
+   * and routing by displayIndex is what keeps points on the correct monitor.
+   */
+  private prepareTag(
+    tag: RawPointTag,
+    screenshots: ScreenshotResult[]
+  ): { overlayIdx: number; x: number; y: number } | null {
+    const shot = screenshots[tag.screen] || screenshots[0];
+    if (!shot) return null;
 
-    while ((match = regex.exec(text)) !== null) {
-      tags.push({
-        x: parseInt(match[1], 10),
-        y: parseInt(match[2], 10),
-        label: match[3],
-        screen: parseInt(match[4], 10),
-      });
+    // Models routinely overshoot the image bounds by a few px; clamp so an
+    // overshoot snaps to the visible edge instead of flying off-screen.
+    const clampedImgX = Math.max(
+      0,
+      Math.min(shot.imageDimensions.width - 1, tag.x)
+    );
+    const clampedImgY = Math.max(
+      0,
+      Math.min(shot.imageDimensions.height - 1, tag.y)
+    );
+    const scaleX = shot.bounds.width / shot.imageDimensions.width;
+    const scaleY = shot.bounds.height / shot.imageDimensions.height;
+    return {
+      overlayIdx: shot.displayIndex,
+      x: Math.round(clampedImgX * scaleX),
+      y: Math.round(clampedImgY * scaleY),
+    };
+  }
+
+  /** Route a single overlay point to the window for its display. */
+  private sendPoint(overlayIdx: number, point: OverlayPoint): void {
+    const idx =
+      overlayIdx >= 0 && overlayIdx < this.overlayWindows.length
+        ? overlayIdx
+        : 0;
+    const win = this.overlayWindows[idx];
+    if (win && !win.isDestroyed()) {
+      win.webContents.send("overlay:point", point);
     }
+  }
 
-    return tags;
+  /** Clear every overlay's point queue (start of a new query). */
+  private resetOverlays(): void {
+    for (const win of this.overlayWindows) {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send("overlay:point", { kind: "reset" });
+      }
+    }
+  }
+
+  /**
+   * Claude-only second-pass refinement for one POINT tag, run concurrently with
+   * the still-streaming response. Crops ~300 imageDim px around the estimate at
+   * native DPI, asks Claude for the precise center, then nudges the already-
+   * shown overlay point (same `id`) into place. Best-effort: any failure leaves
+   * the raw point as-is.
+   */
+  private async refineTagAsync(
+    tag: RawPointTag,
+    id: string,
+    screenshots: ScreenshotResult[],
+    session: QuerySession
+  ): Promise<void> {
+    const shot = screenshots[tag.screen] || screenshots[0];
+    if (!shot) return;
+    try {
+      const crop = cropScreenshotRegion(shot, tag.x, tag.y, 300);
+      const refined = await this.getClaudeService().refinePoint(
+        crop.data,
+        crop.claudeSize.w,
+        crop.claudeSize.h,
+        tag.label
+      );
+      if (session.cancelled || !refined) return;
+
+      // Refined coords are native crop-pixel space → map back to imageDims,
+      // then through prepareTag for identical clamp/scale/routing as the raw.
+      const imgX = crop.origin.x + refined.x / crop.pxPerImageDim;
+      const imgY = crop.origin.y + refined.y / crop.pxPerImageDim;
+      const prepared = this.prepareTag(
+        { x: Math.round(imgX), y: Math.round(imgY), label: tag.label, screen: tag.screen },
+        screenshots
+      );
+      if (!prepared) return;
+
+      console.log(
+        `[Clicky] Refined "${tag.label}": (${tag.x},${tag.y}) -> (${Math.round(imgX)},${Math.round(imgY)})`
+      );
+      this.sendPoint(prepared.overlayIdx, {
+        id,
+        x: prepared.x,
+        y: prepared.y,
+        label: tag.label,
+        kind: "refine",
+      });
+    } catch (err) {
+      console.warn(
+        `[Clicky] Refinement failed for "${tag.label}":`,
+        err instanceof Error ? err.message : err
+      );
+    }
   }
 
   clearHistory(): void {

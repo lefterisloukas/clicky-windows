@@ -1,12 +1,17 @@
 import { SettingsStore } from "../main/settings";
 import { ScreenshotResult } from "../main/screenshot";
 import { SYSTEM_PROMPT } from "./prompt";
+import { readSSE } from "./streaming";
 
 interface ChatQueryParams {
   transcript: string;
   screenshots: ScreenshotResult[];
   cursorPosition: { x: number; y: number };
   conversationHistory: Array<{ role: "user" | "assistant"; content: string }>;
+  /** Called with each text fragment as it streams in. Enables streaming. */
+  onDelta?: (chunk: string) => void;
+  /** Abort an in-flight request (e.g. a newer query superseded this one). */
+  signal?: AbortSignal;
 }
 
 interface ChatResponse {
@@ -71,6 +76,8 @@ export class OpenRouterChatService {
       }
     }
 
+    const stream = !!params.onDelta;
+
     const response = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
       {
@@ -85,7 +92,9 @@ export class OpenRouterChatService {
           model,
           max_tokens: 1024,
           messages,
+          ...(stream ? { stream: true } : {}),
         }),
+        signal: params.signal,
       }
     );
 
@@ -94,11 +103,33 @@ export class OpenRouterChatService {
       throw new Error(`OpenRouter API error (${response.status}): ${error}`);
     }
 
-    const data = (await response.json()) as {
-      choices: Array<{ message: { content: string } }>;
-    };
+    // Non-streaming path: parse the full JSON body as before.
+    if (!stream) {
+      const data = (await response.json()) as {
+        choices: Array<{ message: { content: string } }>;
+      };
+      return { text: data.choices[0]?.message?.content || "" };
+    }
 
-    const text = data.choices[0]?.message?.content || "";
-    return { text };
+    // Streaming path: accumulate `choices[0].delta.content`. OpenRouter emits
+    // `: OPENROUTER PROCESSING` comment lines between events — readSSE ignores
+    // them (they aren't `data:` lines).
+    let full = "";
+    try {
+      await readSSE(response, (ev) => {
+        const piece = (
+          ev as { choices?: Array<{ delta?: { content?: string } }> }
+        ).choices?.[0]?.delta?.content;
+        if (piece) {
+          full += piece;
+          params.onDelta!(piece);
+        }
+      });
+    } catch (err) {
+      if (full) return { text: full };
+      throw err;
+    }
+
+    return { text: full };
   }
 }

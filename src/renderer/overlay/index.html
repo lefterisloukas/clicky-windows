@@ -202,39 +202,86 @@
 
     console.log('[Clicky overlay] script loaded, window.clicky =', !!window.clicky);
 
-    // Handle point-at animations
+    // Handle point-at animations.
+    //
+    // Points now stream in one at a time as the model generates, rather than
+    // arriving as a single batch. We keep a queue keyed by id and walk through
+    // them sequentially (each shown for a minimum dwell) so multi-step
+    // instructions still read as "step 1 → step 2". A `kind:"refine"` message
+    // carries sharper coordinates for an already-seen id and updates it in
+    // place (the CSS left/top transition animates the nudge). `kind:"reset"`
+    // clears everything at the start of a new query.
     if (window.clicky && window.clicky.onPoint) {
-      window.clicky.onPoint((tags) => {
-        console.log('[Clicky overlay] onPoint received tags:', JSON.stringify(tags));
-        if (tags.length === 0) return;
+      const MIN_DWELL = 2000;   // ms each point stays before advancing
+      const HIDE_AFTER = 3000;  // ms after the last point before hiding
 
-        let i = 0;
-        function pointNext() {
-          if (i >= tags.length) {
-            // Hide after last point
-            setTimeout(() => {
-              cursor.classList.remove('visible');
-              label.classList.remove('visible');
-            }, 3000);
-            return;
+      const points = new Map();  // id -> { x, y, label, shown }
+      const order = [];          // ids in arrival order
+      let activeId = null;
+      let dwellTimer = null;
+      let hideTimer = null;
+
+      function renderPoint(pt) {
+        cursor.style.left = pt.x + 'px';
+        cursor.style.top = pt.y + 'px';
+        cursor.classList.add('visible');
+        label.style.left = pt.x + 'px';
+        label.style.top = pt.y + 'px';
+        label.textContent = pt.label || '';
+        label.classList.add('visible');
+      }
+
+      function scheduleHide() {
+        if (hideTimer) clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+          cursor.classList.remove('visible');
+          label.classList.remove('visible');
+        }, HIDE_AFTER);
+      }
+
+      function advance() {
+        const nextId = order.find((id) => points.has(id) && !points.get(id).shown);
+        if (nextId == null) {
+          activeId = null;
+          scheduleHide();
+          return;
+        }
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        activeId = nextId;
+        const pt = points.get(nextId);
+        pt.shown = true;
+        renderPoint(pt);
+        dwellTimer = setTimeout(() => { activeId = null; advance(); }, MIN_DWELL);
+      }
+
+      function reset() {
+        if (dwellTimer) { clearTimeout(dwellTimer); dwellTimer = null; }
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        points.clear();
+        order.length = 0;
+        activeId = null;
+        cursor.classList.remove('visible');
+        label.classList.remove('visible');
+      }
+
+      window.clicky.onPoint((p) => {
+        console.log('[Clicky overlay] onPoint', JSON.stringify(p));
+        if (!p || p.kind === 'reset') { reset(); return; }
+
+        if (p.kind === 'refine') {
+          const ex = points.get(p.id);
+          if (ex) {
+            ex.x = p.x; ex.y = p.y;
+            if (typeof p.label === 'string') ex.label = p.label;
+            if (activeId === p.id) renderPoint(ex);  // animate the correction
           }
-
-          const tag = tags[i];
-          console.log('[Clicky overlay] pointing at', tag.x, tag.y, tag.label);
-          cursor.style.left = tag.x + 'px';
-          cursor.style.top = tag.y + 'px';
-          cursor.classList.add('visible');
-
-          label.style.left = tag.x + 'px';
-          label.style.top = tag.y + 'px';
-          label.textContent = tag.label;
-          label.classList.add('visible');
-
-          i++;
-          setTimeout(pointNext, 2000);
+          return;
         }
 
-        pointNext();
+        // kind === 'raw' (or legacy/no kind) — enqueue a new point.
+        if (!points.has(p.id)) order.push(p.id);
+        points.set(p.id, { x: p.x, y: p.y, label: p.label, shown: false });
+        if (activeId === null) advance();
       });
     } else {
       console.error('[Clicky overlay] window.clicky.onPoint is not available!');
