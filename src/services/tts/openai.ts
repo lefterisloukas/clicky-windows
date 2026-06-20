@@ -50,7 +50,9 @@ export class OpenAITTS implements TTSProvider {
         model: "tts-1",
         input: text,
         voice: this.voice,
-        response_format: "mp3",
+        // WAV so playback can use SoundPlayer.PlaySync() (blocks for the exact
+        // audio length); MP3 would force MediaPlayer + a guessed Start-Sleep.
+        response_format: "wav",
       }),
       signal: this.abortController.signal,
     });
@@ -61,25 +63,24 @@ export class OpenAITTS implements TTSProvider {
     }
 
     const audioBuffer = Buffer.from(await response.arrayBuffer());
-    const tmpFile = path.join(os.tmpdir(), `clicky-tts-${Date.now()}.mp3`);
+    const tmpFile = path.join(os.tmpdir(), `clicky-tts-${Date.now()}.wav`);
     fs.writeFileSync(tmpFile, audioBuffer);
 
-    // Estimate duration: MP3 at ~128kbps = ~16KB/sec
-    const estimatedSeconds = Math.ceil(audioBuffer.length / 16000) + 1;
+    // Generous upper bound for the process timeout only: WAV PCM at 24 kHz mono
+    // 16-bit ≈ 48 KB/sec. Playback itself is timed exactly by SoundPlayer.
+    const maxSeconds = Math.ceil(audioBuffer.length / 48000) + 5;
 
     return new Promise((resolve, reject) => {
+      // SoundPlayer.PlaySync() plays the WAV and blocks for exactly its length,
+      // so there is no padding gap after each chunk and no cold WPF load.
       const psCmd = [
-        "Add-Type -AssemblyName presentationCore",
-        "$p = New-Object System.Windows.Media.MediaPlayer",
-        `$p.Open([Uri]'${tmpFile}')`,
-        "$p.Play()",
-        `Start-Sleep -Seconds ${estimatedSeconds}`,
-        "$p.Close()",
+        `$p = New-Object System.Media.SoundPlayer '${tmpFile}'`,
+        "$p.PlaySync()",
       ].join("; ");
 
       this.currentProcess = exec(
         `powershell -Command "${psCmd}"`,
-        { timeout: estimatedSeconds * 1000 + 5000 },
+        { timeout: maxSeconds * 1000 },
         (error) => {
           this.currentProcess = null;
           try { fs.unlinkSync(tmpFile); } catch {}

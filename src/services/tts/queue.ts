@@ -1,5 +1,11 @@
 import { SettingsStore } from "../../main/settings";
-import { TTSProvider, createTTSProvider } from "./interface";
+import {
+  TTSProvider,
+  PipelinedTTSProvider,
+  Synthesized,
+  createTTSProvider,
+  isPipelined,
+} from "./interface";
 
 /**
  * Per-query TTS coordinator for the streaming pipeline.
@@ -8,57 +14,133 @@ import { TTSProvider, createTTSProvider } from "./interface";
  * generates and feeds them here one at a time via `enqueue`, so the first
  * sentence can start speaking while the rest is still being generated.
  *
- * Why a queue rather than calling `provider.speak()` directly per sentence:
- * every provider's `speak()` calls `stop()` at the top (to interrupt a previous
- * utterance), so two overlapping `speak()` calls on the same instance would
- * kill each other's audio. We hold ONE provider instance per query and chain
- * each `speak()` after the previous one resolves, so playback is strictly
- * sequential and the internal `stop()` only ever fires when nothing is playing.
+ * Two playback strategies:
+ *
+ *  - **Pipelined** (providers implementing `synthesize()`, e.g. Kokoro): the
+ *    pump generates the *next* sentence's audio while the current one is still
+ *    playing, removing the ~1s generation gap between sentences. Playback stays
+ *    strictly sequential; only generation runs ahead (by one).
+ *  - **Sequential** (everything else): each `speak()` is chained after the
+ *    previous one resolves. Every provider's `speak()` calls `stop()` at the
+ *    top, so two overlapping `speak()` calls on the same instance would kill
+ *    each other's audio — chaining keeps them apart.
  *
  * `cancel()` is the single place we stop mid-playback — used when a newer query
  * supersedes this one.
  */
 export class TTSQueue {
   private provider: TTSProvider | null = null;
-  private chain: Promise<void> = Promise.resolve();
   private cancelled = false;
+
+  // Sequential (fallback) path.
+  private chain: Promise<void> = Promise.resolve();
+
+  // Pipelined path.
+  private texts: string[] = [];
+  private pumping = false;
 
   constructor(private readonly settings: SettingsStore) {}
 
-  /** Queue a sentence for sequential playback. No-op once cancelled. */
+  /** Queue a sentence for playback. No-op once cancelled. */
   enqueue(sentence: string | null | undefined): void {
     if (this.cancelled || !sentence || !sentence.trim()) return;
+    if (!this.ensureProvider()) return;
+    const text = sentence.trim();
 
-    if (!this.provider) {
-      try {
-        this.provider = createTTSProvider(this.settings);
-      } catch (err: unknown) {
-        // Provider misconfigured (e.g. missing key) — disable for this query.
-        console.warn(
-          "TTS provider creation failed:",
-          err instanceof Error ? err.message : err
-        );
-        this.cancelled = true;
-        return;
+    if (isPipelined(this.provider!)) {
+      this.texts.push(text);
+      void this.pump(this.provider as PipelinedTTSProvider);
+    } else {
+      this.chain = this.chain.then(() => {
+        if (this.cancelled || !this.provider) return;
+        return this.provider.speak(text).catch((err) => {
+          console.warn(
+            "TTS sentence failed (non-fatal):",
+            err instanceof Error ? err.message : err
+          );
+        });
+      });
+    }
+  }
+
+  /** Lazily create the provider; disables the queue if creation fails. */
+  private ensureProvider(): boolean {
+    if (this.provider) return true;
+    try {
+      this.provider = createTTSProvider(this.settings);
+      return true;
+    } catch (err: unknown) {
+      // Provider misconfigured (e.g. missing key) — disable for this query.
+      console.warn(
+        "TTS provider creation failed:",
+        err instanceof Error ? err.message : err
+      );
+      this.cancelled = true;
+      return false;
+    }
+  }
+
+  /**
+   * Drain the text queue, generating one sentence ahead of playback. Re-entrant-
+   * safe (the `pumping` guard ensures a single active pump); a sentence enqueued
+   * after the queue drains restarts it.
+   */
+  private async pump(provider: PipelinedTTSProvider): Promise<void> {
+    if (this.pumping) return;
+    this.pumping = true;
+
+    let pending: Promise<Synthesized> | null = null;
+    try {
+      while (!this.cancelled) {
+        if (!pending) {
+          const text = this.texts.shift();
+          if (text === undefined) break;
+          pending = provider.synthesize(text);
+        }
+
+        let synth: Synthesized;
+        try {
+          synth = await pending;
+        } catch (err) {
+          console.warn(
+            "TTS synthesis failed (non-fatal):",
+            err instanceof Error ? err.message : err
+          );
+          pending = null;
+          continue;
+        }
+        pending = null;
+        if (this.cancelled) break;
+
+        // Start generating the next sentence *before* playing this one, so
+        // generation overlaps playback instead of stacking after it.
+        const nextText = this.texts.shift();
+        if (nextText !== undefined) pending = provider.synthesize(nextText);
+
+        try {
+          await synth.play();
+        } catch (err) {
+          console.warn(
+            "TTS playback failed (non-fatal):",
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+    } finally {
+      this.pumping = false;
+      // Swallow a prefetched-but-unplayed result so it can't surface as an
+      // unhandled rejection, then restart if work arrived during the tail.
+      if (pending) pending.catch(() => {});
+      if (!this.cancelled && this.texts.length > 0) {
+        void this.pump(provider);
       }
     }
-
-    const text = sentence.trim();
-    this.chain = this.chain.then(() => {
-      if (this.cancelled || !this.provider) return;
-      return this.provider.speak(text).catch((err) => {
-        // One failed sentence must not break the rest of the chain.
-        console.warn(
-          "TTS sentence failed (non-fatal):",
-          err instanceof Error ? err.message : err
-        );
-      });
-    });
   }
 
   /** Stop any in-flight audio and drop the queue. Safe to call repeatedly. */
   cancel(): void {
     this.cancelled = true;
+    this.texts = [];
     this.provider?.stop();
     this.chain = Promise.resolve();
   }
