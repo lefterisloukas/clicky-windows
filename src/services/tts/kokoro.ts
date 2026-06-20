@@ -1,4 +1,4 @@
-import { TTSProvider } from "./interface";
+import { PipelinedTTSProvider, Synthesized } from "./interface";
 import { splitText } from "../incremental";
 import { app } from "electron";
 import { Worker } from "worker_threads";
@@ -138,7 +138,7 @@ export function prewarmKokoro(
  * (runs the onnx-community/Kokoro-82M-v1.0-ONNX weights through onnxruntime-node
  * in a worker thread). No API key, no network, nothing leaves the machine.
  */
-export class KokoroTTS implements TTSProvider {
+export class KokoroTTS implements PipelinedTTSProvider {
   private voice: string;
   private speed: number;
   private dtype: "q4" | "q8";
@@ -155,6 +155,18 @@ export class KokoroTTS implements TTSProvider {
     this.dtype = DTYPE_FOR_QUALITY[quality] ?? DTYPE_FOR_QUALITY.fast;
   }
 
+  /** Generate one chunk's audio in the worker. */
+  private generate(modelDir: string, chunk: string): Promise<GenResult> {
+    return request({
+      type: "generate",
+      modelDir,
+      dtype: this.dtype,
+      text: chunk,
+      voice: this.voice,
+      speed: this.speed,
+    }) as Promise<GenResult>;
+  }
+
   async speak(text: string): Promise<void> {
     this.stop();
     this.stopped = false;
@@ -163,31 +175,45 @@ export class KokoroTTS implements TTSProvider {
     const chunks = this.splitText(text);
     if (chunks.length === 0) return;
 
-    const gen = (chunk: string): Promise<GenResult> =>
-      request({
-        type: "generate",
-        modelDir,
-        dtype: this.dtype,
-        text: chunk,
-        voice: this.voice,
-        speed: this.speed,
-      }) as Promise<GenResult>;
-
     // Pipeline generation with playback: kick off generation of the *next* chunk
     // (in the worker) before playing the current one, so inference overlaps with
     // audio playback instead of stacking after it. Only the first chunk's
     // generation is unavoidable "dead" latency; the rest is hidden behind
     // playback, removing the gaps between sentences.
-    let next: Promise<GenResult> = gen(chunks[0]);
+    let next: Promise<GenResult> = this.generate(modelDir, chunks[0]);
 
     for (let i = 0; i < chunks.length; i++) {
       const result = await next;
       if (this.stopped) break;
       if (i + 1 < chunks.length) {
-        next = gen(chunks[i + 1]);
+        next = this.generate(modelDir, chunks[i + 1]);
       }
       await this.playWav(result);
     }
+  }
+
+  /**
+   * Synthesize (but don't play) one utterance. TTSQueue calls this to generate
+   * the next sentence's audio in the worker *while the current one is playing*,
+   * which is what removes the inter-sentence gap. Generation happens now; the
+   * returned `play()` only does playback (and is awaited sequentially by the
+   * queue, so `stop()` only ever fires against a single in-flight playback).
+   */
+  async synthesize(text: string): Promise<Synthesized> {
+    this.stopped = false;
+    const modelDir = modelDirOrThrow();
+    const chunks = this.splitText(text);
+    const results = await Promise.all(
+      chunks.map((c) => this.generate(modelDir, c))
+    );
+    return {
+      play: async () => {
+        for (const result of results) {
+          if (this.stopped) break;
+          await this.playWav(result);
+        }
+      },
+    };
   }
 
   private async playWav({ wav, durationSec }: GenResult): Promise<void> {

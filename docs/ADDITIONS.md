@@ -79,9 +79,26 @@ Note: in dev (`npm run dev`) the worker loads from `dist/`. For packaged builds,
 confirm `worker_threads` can load the entry from the asar archive (Electron
 supports this in recent versions, but it's worth a smoke test before release).
 
+**Follow-up 3 — pipeline generation across sentences (the inter-sentence gap)**
+With the freeze gone, a ~1s delay before each *next* sentence remained. Cause:
+`TTSQueue` chained `speak()` one sentence at a time, awaiting generation *and*
+playback before starting the next — and since each sentence is a single chunk,
+the existing within-`speak()` pipelining never engaged. So every sentence's ~1s
+generation happened during the silence after the previous one finished.
+
+Fix: an optional `synthesize()` capability on the provider interface
+(`PipelinedTTSProvider`) that splits synthesis from playback. `TTSQueue` now
+detects it and runs a prefetch-by-one pump: it generates sentence N+1 *while*
+sentence N is still playing, keeping playback strictly sequential. Kokoro
+implements `synthesize()`; the other providers are untouched and keep the old
+sequential `speak()` path. Measured (real worker generation, playback simulated
+at true clip duration): max inter-sentence silence dropped from **1323 ms to
+0 ms**.
+
 **Verification**
 - `npx tsc` exits 0.
 - Standalone worker benchmark: main-thread event-loop lag 14 ms (was 188 ms).
+- Pipeline benchmark: inter-sentence silence 0 ms (was 1323 ms).
 
 ---
 
