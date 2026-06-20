@@ -104,6 +104,14 @@ export class CompanionManager {
   private activeSession: QuerySession | null = null;
   private pointSeq = 0;
 
+  // Reuse provider instances across queries so TCP/TLS/HTTP2 connections stay
+  // warm. Each service reads settings fresh on every request, so model/key
+  // changes are picked up without needing to recreate the instance.
+  private claudeProvider: ClaudeService | null = null;
+  private openaiProvider: OpenAIChatService | null = null;
+  private openrouterProvider: OpenRouterChatService | null = null;
+  private geminiProvider: GeminiChatService | null = null;
+
   constructor(settings: SettingsStore, overlayWindows: BrowserWindow[]) {
     this.settings = settings;
     this.screenCapture = new ScreenCapture();
@@ -114,15 +122,19 @@ export class CompanionManager {
   private getAIProvider(): AIProvider {
     const provider = this.settings.get("aiProvider");
     if (provider === "openai") {
-      return new OpenAIChatService(this.settings);
+      return (this.openaiProvider ??= new OpenAIChatService(this.settings));
     }
     if (provider === "openrouter") {
-      return new OpenRouterChatService(this.settings);
+      return (this.openrouterProvider ??= new OpenRouterChatService(this.settings));
     }
     if (provider === "gemini") {
-      return new GeminiChatService(this.settings);
+      return (this.geminiProvider ??= new GeminiChatService(this.settings));
     }
-    return new ClaudeService(this.settings);
+    return this.getClaudeService();
+  }
+
+  private getClaudeService(): ClaudeService {
+    return (this.claudeProvider ??= new ClaudeService(this.settings));
   }
 
   private broadcastStage(stage: string, label: string): void {
@@ -353,8 +365,7 @@ export class CompanionManager {
     if (!shot) return;
     try {
       const crop = cropScreenshotRegion(shot, tag.x, tag.y, 300);
-      const claude = new ClaudeService(this.settings);
-      const refined = await claude.refinePoint(
+      const refined = await this.getClaudeService().refinePoint(
         crop.data,
         crop.claudeSize.w,
         crop.claudeSize.h,

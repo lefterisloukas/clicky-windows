@@ -8,6 +8,28 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-20
 
+### feat/streaming-inference — perf: reuse AI provider instances across queries
+**Time:** ~ (local, UTC+3)
+**Branch:** `feat/streaming-inference`
+**Components:** `src/main/companion.ts`
+
+**Old behavior:** `getAIProvider()` constructed a fresh `OpenAIChatService`,
+`OpenRouterChatService`, `GeminiChatService`, or `ClaudeService` on every query,
+and `refineTagAsync` constructed a fresh `ClaudeService` per POINT tag. Each new
+instance meant a cold HTTP connection (TCP/TLS handshake, no HTTP2 reuse), adding
+small but avoidable latency on every request.
+
+**New behavior:** `CompanionManager` now lazily caches one instance of each
+provider. The cached services still read `settings.get(...)` fresh on every call,
+so model, API key, and proxy changes are picked up without recreating the
+instance. The second-pass refinement path shares the same cached `ClaudeService`
+instead of building its own.
+
+**Verification**
+- `npx tsc --noEmit` exits 0.
+
+---
+
 ### feat/streaming-inference — post-review fixes for streaming reliability
 **Time:** ~ (local, UTC+3)
 **Branch:** `feat/streaming-inference`
