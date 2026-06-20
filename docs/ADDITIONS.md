@@ -8,6 +8,75 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-20
 
+### feat/overlay-response-caption — stream the reply near the cursor (the "Companion Pill")
+**Time:** ~ (local, UTC+3)
+**Branch:** `feat/overlay-response-caption`
+**Components:** `src/renderer/overlay/index.html` (primary),
+`src/services/tts/queue.ts`, `src/main/companion.ts`, `src/preload/index.ts`,
+`src/main/settings.ts`, `src/renderer/settings/index.html`
+
+Until now the model's reply surfaced only in the chat window (full text) and via
+TTS voice; the transparent overlay showed just the animated cursor dot and a tiny
+per-POINT *label* (the element name). This adds a streaming **response caption** —
+a glass "Companion Pill" that reveals the full answer letter-by-letter near the
+cursor, roughly in step with the voice, so the user never has to look away to the
+chat window.
+
+**Design**
+Picked from a 3-way design exploration (pill vs. karaoke subtitle vs. ink-pour).
+The pill reuses the existing overlay identity — dark glass with a cyan-tinted
+border (`#22D3EE`), matching the companion capsule.
+
+**How it works**
+- The reply reaches the overlay via the existing `chat:stream-start/delta/end`
+  broadcast to every window (`CompanionManager.notifyAll`), bridged through
+  preload. The overlay listens to the same stream the chat window does.
+- POINT tags are stripped with the same logic as `chat/index.html`
+  (`stripPointTags`), kept in sync as the source of truth.
+- A **catch-up typewriter** (`CAP_CHAR_INTERVAL`, ~14 cps) decouples bursty
+  network deltas from a smooth, steady reveal with a blinking caret.
+- Voice-synced timing is provided by a new `companion:speaking-ended` signal:
+  `TTSQueue.whenIdle()` resolves once playback fully drains, `companion.ts`
+  broadcasts the event off the critical path, and the overlay holds the pill
+  until the voice ends.
+- The caption **anchors once per reply**: to the first POINT tag (and rides that
+  point's pass-2 refinement), or — if the answer points at nothing — near the
+  real mouse cursor, using the `overlay:companion-anchor` position the overlay
+  already tracks. A ~400 ms grace window lets a point win over the cursor.
+- The existing per-point `#label` is untouched and keeps hopping with the dot.
+- Edge-aware placement flips the pill left/above to stay on-screen.
+- Respects `prefers-reduced-motion` (instant text, no caret/scale).
+
+**Setting**
+New `overlayCaptionEnabled` (default **ON**) with a "Response caption" toggle in
+the settings popover, mirroring the cursor-buddy glow toggle. The overlay reads
+it via `getSettings()` and refreshes on each stream-start.
+
+**Known limitation**
+Renderer-only overlays can't coordinate across monitors. On a multi-monitor
+setup, if an answer's POINT lands on a screen that doesn't hold the cursor while
+the cursor's screen takes the no-point fallback, the pill can briefly appear on
+two screens. Harmless and rare; the robust fix (a main-routed, per-display
+`overlay:caption` channel) was deferred.
+
+**Follow-up — timing + overlap fix**
+Live testing surfaced two issues, both now fixed:
+- *Caption vanished mid-speech and revealed too fast.* The reveal was ~45 cps and
+  the pill hid on a timer keyed to the *text reveal*, which finishes near
+  generation end while TTS audio plays on (especially local Kokoro on CPU). Added
+  a real **`companion:speaking-ended`** signal: `TTSQueue.whenIdle()` resolves
+  once playback fully drains (both the pipelined and sequential paths), `companion.ts`
+  awaits it off the critical path after the final sentence is enqueued and
+  broadcasts the event, and the overlay holds the pill until the *voice* ends,
+  then lingers ~1.5 s. Reveal slowed to ~14 cps (reading pace). When TTS is off or
+  errors (no signal), an estimated-speech-duration fallback hides the pill so it
+  can't hang. Gated on `!session.cancelled` so a superseded query stays silent.
+- *The per-point label and the response pill overlapped at the first element.*
+  Switched to a **unified card**: the pointed element's name becomes a small
+  header inside the pill (reply streams below), and the floating `#label` is
+  suppressed only at the caption's anchor point. Later points (step 2, 3…) keep
+  their hopping label unchanged.
+
 ### fix/tts-playback-gap — remove the dead air and CPU stutter between spoken sentences
 **Time:** ~ (local, UTC+3)
 **Branch:** `fix/tts-playback-gap`

@@ -34,10 +34,14 @@ export class TTSQueue {
 
   // Sequential (fallback) path.
   private chain: Promise<void> = Promise.resolve();
+  private seqActive = 0;
 
   // Pipelined path.
   private texts: string[] = [];
   private pumping = false;
+
+  // Resolvers waiting on whenIdle() — drained once all queued audio has played.
+  private idleResolvers: Array<() => void> = [];
 
   constructor(private readonly settings: SettingsStore) {}
 
@@ -51,16 +55,48 @@ export class TTSQueue {
       this.texts.push(text);
       void this.pump(this.provider as PipelinedTTSProvider);
     } else {
-      this.chain = this.chain.then(() => {
-        if (this.cancelled || !this.provider) return;
-        return this.provider.speak(text).catch((err) => {
-          console.warn(
-            "TTS sentence failed (non-fatal):",
-            err instanceof Error ? err.message : err
-          );
+      this.seqActive++;
+      this.chain = this.chain
+        .then(() => {
+          if (this.cancelled || !this.provider) return;
+          return this.provider.speak(text).catch((err) => {
+            console.warn(
+              "TTS sentence failed (non-fatal):",
+              err instanceof Error ? err.message : err
+            );
+          });
+        })
+        .finally(() => {
+          this.seqActive--;
+          this.settleIdle();
         });
-      });
     }
+  }
+
+  /**
+   * Resolve once every queued sentence has finished playing. Only meaningful
+   * after the final `enqueue` for a query — call it after the trailing flush,
+   * or it may resolve during a gap in streaming. Resolves immediately if the
+   * queue is already idle (nothing enqueued, or all done).
+   */
+  whenIdle(): Promise<void> {
+    if (this.isIdle()) return Promise.resolve();
+    return new Promise<void>((resolve) => this.idleResolvers.push(resolve));
+  }
+
+  private isIdle(): boolean {
+    return (
+      this.cancelled ||
+      (this.texts.length === 0 && !this.pumping && this.seqActive === 0)
+    );
+  }
+
+  /** Drain idle waiters once nothing is queued or playing. */
+  private settleIdle(): void {
+    if (!this.isIdle()) return;
+    const waiters = this.idleResolvers;
+    this.idleResolvers = [];
+    for (const resolve of waiters) resolve();
   }
 
   /** Lazily create the provider; disables the queue if creation fails. */
@@ -133,6 +169,8 @@ export class TTSQueue {
       if (pending) pending.catch(() => {});
       if (!this.cancelled && this.texts.length > 0) {
         void this.pump(provider);
+      } else {
+        this.settleIdle();
       }
     }
   }
@@ -143,5 +181,8 @@ export class TTSQueue {
     this.texts = [];
     this.provider?.stop();
     this.chain = Promise.resolve();
+    // Release any whenIdle() waiter so a superseded query never hangs. The
+    // companion gates on session.cancelled, so this won't emit a stray event.
+    this.settleIdle();
   }
 }

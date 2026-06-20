@@ -61,6 +61,98 @@
       opacity: 1;
     }
 
+    /* Response caption — the streaming "Companion Pill". Separate from #label
+       (which carries the per-point element name): this anchors ONCE per reply
+       and streams the model's full answer letter-by-letter near the cursor. */
+    #response {
+      position: absolute;
+      max-width: 260px;
+      padding: 9px 13px;
+      border-radius: 13px;
+      background: rgba(13, 18, 28, 0.92);
+      border: 1px solid rgba(34, 211, 238, 0.35);
+      color: #F1F6FB;
+      font-family: -apple-system, 'Segoe UI', sans-serif;
+      font-size: 13.5px;
+      line-height: 1.4;
+      font-weight: 480;
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(3px);
+      transform-origin: top left;
+      opacity: 0;
+      transform: scale(0.82);
+      transition: opacity 0.2s ease, transform 0.26s cubic-bezier(0.2, 1.3, 0.4, 1),
+                  left 0.4s ease-out, top 0.4s ease-out;
+      pointer-events: none;
+      overflow-wrap: break-word;
+      z-index: 9997;
+    }
+
+    #response.visible {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* Tail — a rotated square pointing back toward the anchor. The side it sits
+       on flips with placement via the data-tail attribute. */
+    #response::before {
+      content: '';
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: rgba(13, 18, 28, 0.92);
+      border-left: 1px solid rgba(34, 211, 238, 0.35);
+      border-top: 1px solid rgba(34, 211, 238, 0.35);
+      transform: rotate(45deg);
+    }
+    #response[data-tail="top"]::before    { top: -6px;    left: 16px; }
+    #response[data-tail="bottom"]::before { bottom: -6px; left: 16px; transform: rotate(225deg); }
+    #response[data-tailx="right"][data-tail="top"]::before    { right: 16px; left: auto; transform: rotate(45deg) scaleX(-1); }
+    #response[data-tailx="right"][data-tail="bottom"]::before { right: 16px; left: auto; transform: rotate(225deg) scaleX(-1); }
+
+    /* Unified card: the pointed element's name as a small header above the
+       reply, so it doesn't collide with the floating per-point label. */
+    #response .cap-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+      color: #22D3EE;
+      margin-bottom: 6px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    #response .cap-hdot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #3B82F6;
+      box-shadow: 0 0 8px #3B82F6;
+      flex: none;
+    }
+    #response .cap-body { display: inline; }
+
+    #response .cap-caret {
+      display: inline-block;
+      width: 2px;
+      height: 1.05em;
+      vertical-align: -2px;
+      margin-left: 1px;
+      background: #22D3EE;
+      border-radius: 1px;
+      box-shadow: 0 0 6px #22D3EE;
+      animation: capBlink 1s steps(1) infinite;
+    }
+
+    @keyframes capBlink { 50% { opacity: 0; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      #response { transition: opacity 0.2s ease; transform: scale(1); }
+      #response .cap-caret { animation: none; }
+    }
+
     @keyframes pulse {
       0%, 100% { transform: scale(1); opacity: 0.4; }
       50% { transform: scale(2); opacity: 0; }
@@ -184,6 +276,7 @@
   </svg>
   <div id="cursor"></div>
   <div id="label"></div>
+  <div id="response"></div>
 
   <div id="companion" data-state="listening">
     <div id="eq-bars">
@@ -225,6 +318,15 @@
         cursor.style.left = pt.x + 'px';
         cursor.style.top = pt.y + 'px';
         cursor.classList.add('visible');
+        // The response caption folds the anchor point's name into its own
+        // header — suppress the floating label there so the two don't overlap.
+        // Every other point keeps its label exactly as before.
+        const isCaptionAnchor =
+          capEnabled && capActive && capAnchorId != null && activeId === capAnchorId;
+        if (isCaptionAnchor) {
+          label.classList.remove('visible');
+          return;
+        }
         label.style.left = pt.x + 'px';
         label.style.top = pt.y + 'px';
         label.textContent = pt.label || '';
@@ -266,7 +368,7 @@
 
       window.clicky.onPoint((p) => {
         console.log('[Clicky overlay] onPoint', JSON.stringify(p));
-        if (!p || p.kind === 'reset') { reset(); return; }
+        if (!p || p.kind === 'reset') { reset(); captionReset(); return; }
 
         if (p.kind === 'refine') {
           const ex = points.get(p.id);
@@ -275,6 +377,7 @@
             if (typeof p.label === 'string') ex.label = p.label;
             if (activeId === p.id) renderPoint(ex);  // animate the correction
           }
+          captionRefinePoint(p);  // ride the refinement if it's the caption anchor
           return;
         }
 
@@ -282,6 +385,7 @@
         if (!points.has(p.id)) order.push(p.id);
         points.set(p.id, { x: p.x, y: p.y, label: p.label, shown: false });
         if (activeId === null) advance();
+        captionRawPoint(p);  // the first raw point anchors the response caption
       });
     } else {
       console.error('[Clicky overlay] window.clicky.onPoint is not available!');
@@ -365,6 +469,316 @@
         companionState = 'idle';
         updateCompanion();
       });
+    }
+
+    // ====================================================================
+    // Response caption — the streaming "Companion Pill".
+    //
+    // The model's full reply is broadcast to every window via the
+    // chat:stream-* IPC (see CompanionManager.notifyAll); the overlay listens
+    // to the same stream the chat window does and renders it as a pill near
+    // the cursor. The reply anchors ONCE per query — to the first POINT tag,
+    // or (if the answer points at nothing) near the real mouse cursor. The
+    // per-point #label keeps hopping with the dot independently of this.
+    //
+    // A "catch-up typewriter" decouples bursty network deltas from a smooth,
+    // steady letter-by-letter reveal that roughly tracks generation/TTS pace.
+    // ====================================================================
+    const responseEl = document.getElementById('response');
+    const capReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const CAP_CHAR_INTERVAL = 70;   // ms per character (~14 cps, reading pace)
+    const CAP_GRACE = 400;          // ms to wait for a point before cursor-anchoring
+    const CAP_LINGER = 1500;        // ms the pill stays after the voice ends
+    const CAP_MS_PER_WORD = 390;    // ~155 wpm — speech-duration estimate (TTS-off)
+    const CAP_OFFSET_X = 14;
+    const CAP_OFFSET_Y = 26;        // below #label's +20 so the two don't collide
+
+    // POINT-tag stripping — kept in sync with chat/index.html (source of truth).
+    // Removes complete [POINT:…] tags and hides any trailing, not-yet-closed tag
+    // so a half-streamed tag never flashes on screen.
+    const CAP_POINT_RE = /\[POINT:[^\]]+\]/g;
+    function capStripPointTags(text) {
+      const withoutComplete = text.replace(CAP_POINT_RE, '');
+      const trailingOpen = withoutComplete.match(/\[[^\]]*$/);
+      if (trailingOpen && /\[POINT:/i.test(trailingOpen[0])) {
+        return withoutComplete.slice(0, trailingOpen.index);
+      }
+      return withoutComplete;
+    }
+
+    let capEnabled = true;          // cached setting; refreshed each stream-start
+    let capActive = false;          // a reply is currently streaming/showing
+    let capRaw = '';                // accumulated raw delta text (POINT tags intact)
+    let capTarget = '';             // stripped text we want revealed
+    let capShown = 0;               // chars revealed so far
+    let capAnchor = null;           // {x,y} once decided (display-local px)
+    let capAnchorId = null;         // point id we anchored to (for refine follow)
+    let capHeader = '';             // anchor element name → pill header (unified card)
+    let capPointSeen = false;
+    let capEnded = false;           // stream-end received
+    let capVoiceEnded = false;      // companion:speaking-ended received
+    let capTypeTimer = null;
+    let capGraceTimer = null;
+    let capHideTimer = null;
+    let capFallbackTimer = null;    // hide backstop when no voice signal arrives
+    let capBodyEl = null;           // the streaming-text span inside the pill
+
+    function captionClearTimers() {
+      if (capTypeTimer) { clearInterval(capTypeTimer); capTypeTimer = null; }
+      if (capGraceTimer) { clearTimeout(capGraceTimer); capGraceTimer = null; }
+      if (capHideTimer) { clearTimeout(capHideTimer); capHideTimer = null; }
+      if (capFallbackTimer) { clearTimeout(capFallbackTimer); capFallbackTimer = null; }
+    }
+
+    function captionReset() {
+      captionClearTimers();
+      capActive = false;
+      capRaw = ''; capTarget = ''; capShown = 0;
+      capAnchor = null; capAnchorId = null; capHeader = '';
+      capPointSeen = false; capEnded = false; capVoiceEnded = false;
+      capBodyEl = null;
+      responseEl.classList.remove('visible');
+      responseEl.innerHTML = '';
+      responseEl.dataset.tail = 'top';
+      responseEl.dataset.tailx = 'left';
+    }
+
+    function captionRevealDone() {
+      return capShown >= capTarget.length;
+    }
+
+    // Build the pill's inner structure once: optional element-name header, then
+    // the streaming-text body. Rebuilt only after a reset (capBodyEl cleared).
+    function captionEnsureDom() {
+      if (capBodyEl) return;
+      responseEl.innerHTML = '';
+      if (capHeader) {
+        const hdr = document.createElement('div');
+        hdr.className = 'cap-header';
+        const dot = document.createElement('span');
+        dot.className = 'cap-hdot';
+        hdr.appendChild(dot);
+        hdr.appendChild(document.createTextNode(capHeader));
+        responseEl.appendChild(hdr);
+      }
+      capBodyEl = document.createElement('span');
+      capBodyEl.className = 'cap-body';
+      responseEl.appendChild(capBodyEl);
+    }
+
+    function captionRender() {
+      captionEnsureDom();
+      if (capShown > capTarget.length) capShown = capTarget.length;
+      capBodyEl.textContent = capTarget.slice(0, capShown);
+      const done = capEnded && captionRevealDone();
+      if (!capReduced && !done) {
+        const caret = document.createElement('span');
+        caret.className = 'cap-caret';
+        capBodyEl.appendChild(caret);
+      }
+    }
+
+    // Anchor-relative placement, flipping to stay on-screen once size is known.
+    function captionPlace() {
+      if (!capAnchor) return;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const rect = responseEl.getBoundingClientRect();
+      const w = rect.width || 200, h = rect.height || 40;
+      let x = capAnchor.x + CAP_OFFSET_X;
+      let y = capAnchor.y + CAP_OFFSET_Y;
+      let tail = 'top';
+      let tailx = 'left';
+      if (x + w > vw - 8) {                  // overflow right -> flip left
+        x = capAnchor.x - w - CAP_OFFSET_X;
+        if (x < 8) x = Math.max(8, vw - w - 8);
+        tailx = 'right';                     // tail must mirror to point back
+      }
+      if (y + h > vh - 8) {                  // overflow bottom -> flip above
+        y = capAnchor.y - h - CAP_OFFSET_Y;
+        tail = 'bottom';
+        if (y < 8) y = 8;
+      }
+      responseEl.style.left = x + 'px';
+      responseEl.style.top = y + 'px';
+      responseEl.dataset.tail = tail;
+      responseEl.dataset.tailx = tailx;
+    }
+
+    function captionShow() {
+      if (!responseEl.classList.contains('visible')) {
+        captionPlace();
+        requestAnimationFrame(() => responseEl.classList.add('visible'));
+      }
+    }
+
+    // Hide after `delay` ms, then clear the pill once its fade-out has run.
+    function captionHide(delay) {
+      if (capHideTimer) clearTimeout(capHideTimer);
+      capHideTimer = setTimeout(() => {
+        responseEl.classList.remove('visible');
+        capActive = false;
+        setTimeout(() => {
+          if (!responseEl.classList.contains('visible')) {
+            responseEl.innerHTML = '';
+            capBodyEl = null;
+            responseEl.dataset.tail = 'top';
+            responseEl.dataset.tailx = 'left';
+          }
+        }, 320);
+      }, delay);
+    }
+
+    // The reply has finished revealing AND the model has stopped streaming.
+    // Keep the pill up until the *voice* finishes (companion:speaking-ended),
+    // then linger briefly. A fallback timer (set at stream-end) covers the
+    // case where no voice plays (TTS off / errored) so it can't hang forever.
+    function captionMaybeFinish() {
+      if (capEnded && capVoiceEnded && captionRevealDone()) {
+        if (capFallbackTimer) { clearTimeout(capFallbackTimer); capFallbackTimer = null; }
+        captionHide(CAP_LINGER);
+      }
+    }
+
+    function captionTick() {
+      if (captionRevealDone()) {
+        clearInterval(capTypeTimer); capTypeTimer = null;
+        captionRender();
+        captionPlace();                      // re-flip now that size has settled
+        captionMaybeFinish();
+        return;
+      }
+      capShown++;
+      captionRender();
+    }
+
+    function captionStartTyping() {
+      if (!capAnchor) return;
+      if (capReduced) {                      // reveal instantly, no animation
+        capShown = capTarget.length;
+        captionRender();
+        captionPlace();
+        captionMaybeFinish();
+        return;
+      }
+      if (!capTypeTimer && capShown < capTarget.length) {
+        capTypeTimer = setInterval(captionTick, CAP_CHAR_INTERVAL);
+      }
+    }
+
+    // Grace timer fired without a point — anchor to the live cursor instead,
+    // but only on the overlay whose display actually holds the cursor.
+    function captionAnchorFromCursor() {
+      capGraceTimer = null;
+      if (capAnchor || !capActive || !capEnabled) return;
+      if (!anchor || !anchor.active) return;  // cursor isn't on this display
+      capAnchor = { x: anchor.x, y: anchor.y };
+      if (capTarget) { captionShow(); captionStartTyping(); }
+    }
+
+    // The first raw POINT of the reply anchors the caption (anchors once) and
+    // folds that element's name into the pill header.
+    function captionRawPoint(p) {
+      if (!capEnabled) return;
+      capPointSeen = true;
+      if (capAnchor) return;                 // first point wins
+      if (capGraceTimer) { clearTimeout(capGraceTimer); capGraceTimer = null; }
+      capAnchor = { x: p.x, y: p.y };
+      capAnchorId = p.id;
+      capHeader = (p.label || '').trim();
+      // This point just became active via advance() — hide its floating label;
+      // its name now lives in the pill header.
+      if (capActive) label.classList.remove('visible');
+      if (capActive && capTarget) { captionShow(); captionStartTyping(); }
+    }
+
+    // If the anchor point is refined, nudge the pill to follow it.
+    function captionRefinePoint(p) {
+      if (capAnchorId && p && p.id === capAnchorId && typeof p.x === 'number') {
+        capAnchor = { x: p.x, y: p.y };
+        captionPlace();
+      }
+    }
+
+    function captionOnDelta(text) {
+      if (!capEnabled || !capActive) return;
+      capRaw += text;
+      capTarget = capStripPointTags(capRaw).replace(/^\s+/, '');  // ltrim only
+      if (capAnchor) {
+        captionShow();
+        captionStartTyping();
+      } else if (!capGraceTimer && !capPointSeen) {
+        capGraceTimer = setTimeout(captionAnchorFromCursor, CAP_GRACE);
+      }
+    }
+
+    if (window.clicky && window.clicky.onStreamStart) {
+      window.clicky.onStreamStart(() => {
+        captionReset();
+        capActive = true;
+        // Refresh the toggle for this query. Cached value gates synchronously;
+        // an IPC round-trip (faster than the first network delta) corrects it.
+        if (window.clicky.getSettings) {
+          window.clicky.getSettings().then((s) => {
+            capEnabled = s ? s.overlayCaptionEnabled !== false : true;
+            if (!capEnabled) captionReset();
+          }).catch(() => {});
+        }
+      });
+    }
+
+    if (window.clicky && window.clicky.onStreamDelta) {
+      window.clicky.onStreamDelta(({ text }) => { if (text) captionOnDelta(text); });
+    }
+
+    if (window.clicky && window.clicky.onStreamEnd) {
+      window.clicky.onStreamEnd(({ text, error }) => {
+        if (!capActive) return;
+        if (error || !capEnabled) { captionReset(); return; }
+        capEnded = true;
+        if (typeof text === 'string' && text) {
+          capRaw = text;
+          capTarget = capStripPointTags(text).trim();
+        }
+        if (!capAnchor) {                    // last chance: try the cursor
+          if (capGraceTimer) { clearTimeout(capGraceTimer); capGraceTimer = null; }
+          captionAnchorFromCursor();
+          if (!capAnchor) { captionReset(); return; }
+        }
+        captionShow();
+        captionStartTyping();
+
+        // Hold the pill for the voice (companion:speaking-ended). If no voice
+        // plays (TTS off / errored), nothing would ever hide it — so arm a
+        // fallback from the estimated speech duration. The real signal, when it
+        // comes, clears this and hides on its own (shorter) linger.
+        const words = capTarget.trim() ? capTarget.trim().split(/\s+/).length : 0;
+        const estSpeechMs = words * CAP_MS_PER_WORD;
+        const revealRemainingMs =
+          Math.max(0, capTarget.length - capShown) * CAP_CHAR_INTERVAL;
+        const fallbackMs = Math.max(revealRemainingMs, estSpeechMs) + CAP_LINGER;
+        if (capFallbackTimer) clearTimeout(capFallbackTimer);
+        capFallbackTimer = setTimeout(() => { capFallbackTimer = null; captionHide(0); }, fallbackMs);
+
+        captionMaybeFinish();  // voice may have already ended (very short reply)
+      });
+    }
+
+    // Voice finished for this query — now the pill can fade. Authoritative when
+    // TTS is on; preempts the estimate fallback above.
+    if (window.clicky && window.clicky.onSpeakingEnded) {
+      window.clicky.onSpeakingEnded(() => {
+        if (!capActive || !capEnabled) return;  // stale event from a prior query
+        capVoiceEnded = true;
+        captionMaybeFinish();
+      });
+    }
+
+    // Prime the cached toggle value at load.
+    if (window.clicky && window.clicky.getSettings) {
+      window.clicky.getSettings()
+        .then((s) => { capEnabled = s ? s.overlayCaptionEnabled !== false : true; })
+        .catch(() => {});
     }
   </script>
 </body>

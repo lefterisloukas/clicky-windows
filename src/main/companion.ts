@@ -257,6 +257,17 @@ export class CompanionManager {
       // Speak any trailing fragment that never hit a sentence boundary.
       if (session.tts) session.tts.enqueue(sentenceEx.flush());
 
+      // Every sentence is now queued. Wait (off the critical path) for playback
+      // to fully drain, then tell the overlay the voice has stopped so its
+      // response caption can linger exactly as long as the speech, not the
+      // text reveal. Gated on !cancelled so a superseded query stays silent.
+      if (session.tts) {
+        const tts = session.tts;
+        void tts.whenIdle().then(() => {
+          if (!session.cancelled) this.notifyAll("companion:speaking-ended", {});
+        });
+      }
+
       console.log(`[Clicky] ${providerLabel(aiProviderName)} response:`, text);
 
       // 4. Commit the turn to shared history. Always keep the user turn so a
