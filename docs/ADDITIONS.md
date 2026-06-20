@@ -6,6 +6,173 @@ unless otherwise noted). Newest entries go at the top.
 
 ---
 
+## 2026-06-20
+
+### feat/cursor-visual-states — refactor: replace cursor companion pill with bare animations
+**Time:** ~ (local, UTC+3)
+**Branch:** `feat/cursor-visual-states`
+**Component:** `src/renderer/overlay/index.html`
+
+Removed the opaque dark pill (background, border, text labels) from the cursor
+companion indicator and replaced it with minimal, slightly transparent
+animations that sit directly on air:
+
+- **Listening**: 5 CSS `#eq-bars` equalizer bars with staggered `barDance`
+  keyframes, glowing cyan — replaces the canvas-based scrolling wave.
+- **Thinking**: existing conic-gradient `mini-spin` ring kept exactly as-is,
+  with a small `drop-shadow` glow added.
+- **Removed** `#recording-indicator` and `#processing-indicator` corner pills
+  entirely (CSS + HTML).
+- **Removed** all canvas wave JS (`initWave`, `drawWave`, `startWave`,
+  `stopWave`, `requestAnimationFrame` loop).
+- Companion `opacity` reduced to `0.72` (from `1.0`) when visible.
+- Position changed from upper-right (`translate(14px, -34px)`) to
+  lower-right (`translate(14px, 14px)`) of the cursor tip.
+
+---
+
+### feat/cursor-visual-states — feat: Escape cancels an in-progress recording
+**Time:** ~ (local, UTC+3)
+**Branch:** `feat/cursor-visual-states`
+**Author:** Claude Code
+
+Added a way to **abort** push-to-talk while listening, without transcribing or
+querying the captured audio. The push-to-talk hotkey is a *toggle* (a global
+shortcut fires once per press; there's no key-up), so previously the only way
+out of a recording was to press the hotkey again — which always sent the audio
+through the pipeline. Escape now bails out cleanly.
+
+- `src/main/hotkey.ts` — `Escape` is registered as a global shortcut **only
+  while recording** (`registerCancelKey` on start, `unregisterCancelKey` on
+  stop), so it doesn't swallow Escape system-wide the rest of the time.
+  Pressing it calls `cancelRecording()`, which flips `isRecording` off and
+  broadcasts a new **`hotkey:recording-cancelled`** event. It deliberately does
+  **not** send `recording-changed(false)` — that path transcribes + queries the
+  very audio we're discarding.
+- `src/preload/index.ts` — exposed `onRecordingCancelled`.
+- `src/renderer/chat/index.html` — on cancel, sets a `discardRecording` flag and
+  stops the recorder; `mediaRecorder.onstop` drops the chunks and resets the mic
+  UI instead of sending them.
+- `src/renderer/overlay/index.html` — on cancel, drops the companion state to
+  idle and hides the indicator.
+
+**Verification**
+- `npx tsc` exits 0.
+- Repro: hold the hotkey to start listening, press **Escape** → indicator
+  disappears, no transcript, no query, mic released.
+
+---
+
+### feat/cursor-visual-states — feat: cursor-anchored state indicator (foundation)
+**Time:** ~ (local, UTC+3)
+**Branch:** `feat/cursor-visual-states`
+**Author:** Claude Code
+
+The foundation under the bare animations above: moving the "listening" /
+"thinking" feedback from the screen-corner pills to the **cursor itself**, since
+that's where the user is looking. Three layers:
+
+- **`src/main/index.ts` — decoupled cursor tracking from the glow setting.** The
+  60 fps tracking loop (`startCursorBuddy`) now runs **unconditionally** while
+  the app is up and emits a new **`overlay:companion-anchor`** message
+  (`{ active, x, y }`) every tick to drive the indicator's position. The glow
+  dot's own messages (`overlay:cursor-buddy(-visible)`) stay gated behind
+  `cursorBuddyEnabled`, so the glow behaves exactly as before. This lets the
+  listening/thinking indicator anchor to the cursor **even when the glow dot is
+  disabled**. The settings toggle no longer starts/stops the loop — it only
+  gates the glow (and hides it immediately when turned off).
+- **`src/preload/index.ts`** — exposed `onCompanionAnchor`.
+- **`src/renderer/overlay/index.html` — state machine.** `companionState`
+  (`idle | listening | thinking`) is driven by `onRecordingChanged` (→ listening)
+  and `onStage` (any stage except `speaking`/`done` → thinking; those two →
+  idle). The indicator shows only when the state isn't idle **and** the cursor is
+  on that display (`anchor.active`), so on multi-monitor it appears only where
+  the cursor is.
+
+The visual treatment that rides on this foundation is documented in the
+"replace cursor companion pill with bare animations" entry above.
+
+**Verification**
+- `npx tsc` exits 0.
+- Listening/thinking indicators track the cursor and survive toggling the
+  Cursor Companion glow off.
+
+---
+
+### feat/cursor-visual-states — fix: first push-to-talk after launch captured nothing
+**Time:** ~ (local, UTC+3)
+**Branch:** `feat/cursor-visual-states`
+**Author:** Claude Code
+
+Fixed a bug where the **first** voice request after launching the app did
+nothing: the overlay showed its "listening" indicator, but no audio was
+captured, and opening the Chat window afterwards showed an empty conversation —
+as if nothing had been said.
+
+**Root cause**
+Push-to-talk mic capture (`getUserMedia` / `MediaRecorder`) lives **only** in
+the chat window's renderer (`src/renderer/chat/index.html` — the sole renderer
+with `getUserMedia`). The chat window is created lazily (it's a tray-resident
+app), and the global hotkey never opened it. So if the user triggered
+push-to-talk before ever opening Chat, there was no renderer alive to record:
+
+1. Hotkey fires → `hotkey.ts` flips `isRecording` and broadcasts
+   `hotkey:recording-changed` to all **open** windows.
+2. The chat renderer is what listens and runs `startRecording()` — but it
+   didn't exist yet.
+3. `audio:recording-complete` was therefore never invoked → no transcript →
+   nothing processed.
+
+The `feat/cursor-visual-states` work made the failure *look* like success: the
+always-alive overlay window now also listens to `hotkey:recording-changed` and
+animates a cyan "listening" wave near the cursor. That indicator reacts to the
+hotkey **broadcast**, not to any real mic stream, so it lit up even though no
+window was recording — giving false confirmation that Clicky had heard the user.
+
+**Fix**
+Ensure a recording-capable renderer is alive and loaded **before** recording is
+announced — but keep it **invisible**. The chat window doesn't need to be shown
+to host the recorder; it only needs to exist and be loaded. Edits, all in the
+main process:
+
+- `src/main/hotkey.ts` — `HotkeyManager` now accepts an optional
+  `ensureRecorderReady` hook (constructor arg). `toggleRecording` is `async`;
+  when recording **starts**, it `await`s that hook before broadcasting
+  `recording-changed`. Also guards the broadcast against destroyed windows.
+- `src/main/index.ts` — split window creation from window *showing*:
+  - `createChatWindow()` now always creates the window **hidden** (no auto-show
+    on `ready-to-show`) and sets `webPreferences.backgroundThrottling: false`
+    so timers / `MediaRecorder` keep running at full rate while hidden.
+  - `ensureChatWindow()` — creates the hidden window if absent, returns it
+    (never shows).
+  - `ensureChatReady()` — `ensureChatWindow()` + resolves once the renderer has
+    finished loading. This is the hook passed to `HotkeyManager`. **It does not
+    show the window.**
+  - `openChatWindow()` — the only path that *reveals* the window (waits for
+    `ready-to-show` to avoid a white flash, then re-applies always-on-top). Used
+    by the tray menu, the popover's "Open chat", and first-run.
+  - At startup the hidden chat window is **pre-created** (`ensureChatWindow()`)
+    so the recorder is warm and the very first hotkey press records instantly.
+
+Net effect: push-to-talk works on the first try after launch (and every time)
+**without the chat window ever popping onto the screen**. The conversation still
+accumulates in the hidden chat window, so it's all there if the user later opens
+chat. The overlay's "listening" indicator now always has a real recorder behind
+it.
+
+**Verification**
+- `npx tsc` exits 0.
+- Repro: launch app, press the hotkey *without* opening Chat, speak. Previously
+  nothing was captured; now the request is processed and **no window appears**.
+
+**Out of scope (deferred)**
+- Fully overlay-only (chat-less) voice: moving mic capture into the always-alive
+  overlay renderer and surfacing transcript/response purely via overlay + TTS.
+  Not needed — the hidden-chat-window approach already gives a popup-free voice
+  flow while keeping the existing recording + transcript-display architecture.
+
+---
+
 ## 2026-06-14
 
 ### feat/june14fixes-after-kokoro — logging + TTS-label fixes

@@ -8,6 +8,13 @@ contextBridge.exposeInMainWorld("clicky", {
     });
   },
 
+  // Recording aborted via Escape — discard audio, don't transcribe.
+  onRecordingCancelled: (callback: () => void) => {
+    ipcRenderer.on("hotkey:recording-cancelled", () => {
+      callback();
+    });
+  },
+
   // Overlay pointing
   onPoint: (
     callback: (
@@ -43,6 +50,16 @@ contextBridge.exposeInMainWorld("clicky", {
   onCursorBuddyVisible: (callback: (visible: boolean) => void) => {
     ipcRenderer.on("overlay:cursor-buddy-visible", (_event, visible) => {
       callback(visible);
+    });
+  },
+
+  // Companion anchor — cursor position for the listening/thinking capsule.
+  // Always streamed (independent of the glow-dot setting).
+  onCompanionAnchor: (
+    callback: (data: { active: boolean; x: number; y: number }) => void
+  ) => {
+    ipcRenderer.on("overlay:companion-anchor", (_event, data) => {
+      callback(data);
     });
   },
 

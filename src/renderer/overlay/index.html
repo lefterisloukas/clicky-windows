@@ -100,75 +100,74 @@
       50% { transform: scale(1.8); opacity: 0; }
     }
 
-    /* Recording indicator */
-    #recording-indicator {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      display: flex;
+    /* Cursor companion — bare animation anchored bottom-right of cursor tip.
+       No background, no border, no text — just the motion. */
+    #companion {
+      --c: #22D3EE;
+      position: absolute;
+      left: 0;
+      top: 0;
+      display: inline-flex;
       align-items: center;
-      gap: 8px;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 8px 16px;
-      border-radius: 20px;
+      justify-content: center;
+      /* sit 14 px right and 14 px below the cursor tip */
+      transform: translate(14px, 14px);
+      pointer-events: none;
       opacity: 0;
       transition: opacity 0.2s ease;
+      z-index: 10000;
     }
 
-    #recording-indicator.active {
-      opacity: 1;
-    }
+    #companion.visible { opacity: 0.72; }
+    #companion[data-state="listening"] { --c: #22D3EE; }
+    #companion[data-state="thinking"]  { --c: #3B82F6; }
 
-    #recording-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #ef4444;
-      animation: blink 1s ease-in-out infinite;
-    }
-
-    #recording-text {
-      color: white;
-      font-family: 'Segoe UI', sans-serif;
-      font-size: 13px;
-    }
-
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.3; }
-    }
-
-    /* Processing indicator */
-    #processing-indicator {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      display: flex;
+    /* Listening: 5 equalizer bars */
+    #eq-bars {
+      display: none;
       align-items: center;
-      gap: 8px;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 8px 16px;
-      border-radius: 20px;
-      opacity: 0;
-      transition: opacity 0.2s ease;
+      gap: 2.5px;
+      height: 22px;
+    }
+    #eq-bars .bar {
+      width: 3px;
+      border-radius: 2px;
+      background: var(--c);
+      box-shadow: 0 0 7px rgba(34, 211, 238, 0.8);
+      animation: barDance 1s ease-in-out infinite;
+    }
+    #eq-bars .bar:nth-child(1) { --bh: 7px;  animation-delay: 0s; }
+    #eq-bars .bar:nth-child(2) { --bh: 14px; animation-delay: 0.11s; }
+    #eq-bars .bar:nth-child(3) { --bh: 20px; animation-delay: 0.22s; }
+    #eq-bars .bar:nth-child(4) { --bh: 14px; animation-delay: 0.33s; }
+    #eq-bars .bar:nth-child(5) { --bh: 7px;  animation-delay: 0.44s; }
+
+    @keyframes barDance {
+      0%, 100% { height: calc(var(--bh) * 0.35); }
+      50%       { height: var(--bh); }
     }
 
-    #processing-indicator.active {
-      opacity: 1;
-    }
-
-    #processing-dot {
-      width: 10px;
-      height: 10px;
+    /* Thinking: conic-gradient ring spinner (unchanged from previous design) */
+    #companion .mini-spin {
+      display: none;
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
-      background: #638cff;
-      animation: blink 1s ease-in-out infinite;
+      background: conic-gradient(from 0deg, transparent 0deg, var(--c) 300deg, transparent 360deg);
+      -webkit-mask: radial-gradient(circle 5px at center, transparent 96%, #000 100%);
+              mask: radial-gradient(circle 5px at center, transparent 96%, #000 100%);
+      animation: spin 1.35s linear infinite;
+      filter: drop-shadow(0 0 5px var(--c));
     }
 
-    #processing-text {
-      color: white;
-      font-family: 'Segoe UI', sans-serif;
-      font-size: 13px;
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #companion[data-state="listening"] #eq-bars    { display: flex; }
+    #companion[data-state="thinking"]  .mini-spin  { display: block; }
+
+    @media (prefers-reduced-motion: reduce) {
+      #companion .mini-spin { animation: none; }
+      #eq-bars .bar { animation: none; height: var(--bh); }
     }
   </style>
 </head>
@@ -177,20 +176,20 @@
   <div id="cursor"></div>
   <div id="label"></div>
 
-  <div id="recording-indicator">
-    <div id="recording-dot"></div>
-    <span id="recording-text">Listening...</span>
-  </div>
-
-  <div id="processing-indicator">
-    <div id="processing-dot"></div>
-    <span id="processing-text">Reading screen...</span>
+  <div id="companion" data-state="listening">
+    <div id="eq-bars">
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+    </div>
+    <div class="mini-spin"></div>
   </div>
 
   <script>
     const cursor = document.getElementById('cursor');
     const label = document.getElementById('label');
-    const recordingIndicator = document.getElementById('recording-indicator');
 
     console.log('[Clicky overlay] script loaded, window.clicky =', !!window.clicky);
 
@@ -251,32 +250,65 @@
       }
     });
 
-    // Handle processing stages
-    const processingIndicator = document.getElementById('processing-indicator');
-    const processingText = document.getElementById('processing-text');
+    // ---- Cursor companion: listening (eq bars) + thinking (conic spinner) ----
+    const companion = document.getElementById('companion');
 
-    if (window.clicky && window.clicky.onStage) {
-      window.clicky.onStage(({ stage, label }) => {
-        if (stage === 'done' || stage === 'speaking') {
-          processingIndicator.classList.remove('active');
-        } else {
-          processingText.textContent = label;
-          processingIndicator.classList.add('active');
-        }
-      });
+    let companionState = 'idle';            // 'idle' | 'listening' | 'thinking'
+    const anchor = { active: false, x: 0, y: 0 };
+
+    function updateCompanion() {
+      const show = companionState !== 'idle' && anchor.active;
+      if (companionState !== 'idle') {
+        companion.dataset.state = companionState;
+      }
+      companion.classList.toggle('visible', show);
     }
 
-    // Handle recording state
+    if (window.clicky && window.clicky.onCompanionAnchor) {
+      window.clicky.onCompanionAnchor((data) => {
+        anchor.active = data.active;
+        if (data.active) {
+          anchor.x = data.x;
+          anchor.y = data.y;
+          companion.style.left = data.x + 'px';
+          companion.style.top = data.y + 'px';
+        }
+        updateCompanion();
+      });
+    } else {
+      console.error('[Clicky overlay] window.clicky.onCompanionAnchor is not available!');
+    }
+
+    // recording -> listening
     if (window.clicky && window.clicky.onRecordingChanged) {
       window.clicky.onRecordingChanged((isRecording) => {
         if (isRecording) {
-          recordingIndicator.classList.add('active');
-        } else {
-          recordingIndicator.classList.remove('active');
+          companionState = 'listening';
+        } else if (companionState === 'listening') {
+          companionState = 'idle';
         }
+        updateCompanion();
       });
-    } else {
-      console.error('[Clicky overlay] window.clicky.onRecordingChanged is not available!');
+    }
+
+    // processing stages -> thinking
+    if (window.clicky && window.clicky.onStage) {
+      window.clicky.onStage(({ stage }) => {
+        if (stage === 'speaking' || stage === 'done') {
+          companionState = 'idle';
+        } else {
+          companionState = 'thinking';
+        }
+        updateCompanion();
+      });
+    }
+
+    // Escape during recording -> cancel
+    if (window.clicky && window.clicky.onRecordingCancelled) {
+      window.clicky.onRecordingCancelled(() => {
+        companionState = 'idle';
+        updateCompanion();
+      });
     }
   </script>
 </body>
