@@ -36,6 +36,22 @@ export class AudioCapture {
       "audio:recording-complete",
       async (_event, audioData: ArrayBuffer) => {
         try {
+          // Capture the screen NOW (mic just stopped — this is the state the
+          // user is asking about) in parallel with transcription, so the
+          // ~0.3–1s capture cost overlaps the transcription instead of being
+          // tacked on after it. Kicked off before the await; consumed below.
+          const capturePromise = this.companion
+            ? this.companion.captureScreens().catch((err) => {
+                // Don't let a capture failure sink the whole query — fall back
+                // to letting processQuery capture inline.
+                console.warn(
+                  "Parallel screen capture failed; will capture inline:",
+                  err instanceof Error ? err.message : err
+                );
+                return undefined;
+              })
+            : Promise.resolve(undefined);
+
           const transcript = await this.transcribe(Buffer.from(audioData));
           if (!transcript || !transcript.trim()) {
             return { error: "No speech detected" };
@@ -48,9 +64,13 @@ export class AudioCapture {
           // Send transcript to chat UI immediately
           this.notifyChat("voice:transcript", transcript);
 
-          // Process query through companion
+          // Process query through companion, reusing the parallel capture.
           if (this.companion) {
-            const response = await this.companion.processQuery(transcript);
+            const prefetched = await capturePromise;
+            const response = await this.companion.processQuery(
+              transcript,
+              prefetched
+            );
             return { transcript, response };
           }
 

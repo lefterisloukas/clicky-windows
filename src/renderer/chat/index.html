@@ -997,6 +997,81 @@
       return div;
     }
 
+    // ── Streaming response handling ──
+    // The main process streams the assistant reply via chat:stream-* events:
+    // stream-start opens a bubble, stream-delta appends plain text live (POINT
+    // tags stripped), stream-end renders the final markdown. The invoke return
+    // (sendQuery / sendAudioRecording) still resolves with the full text and is
+    // used as a FALLBACK only when no streaming occurred (e.g. an early error).
+    const POINT_RE = /\[POINT:[^\]]+\]/g;
+    let streamBubble = null;
+    let streamRaw = '';
+    let streamProduced = false;
+
+    function removeWelcome() {
+      if (firstMessage) {
+        welcome.remove();
+        firstMessage = false;
+      }
+    }
+
+    // Transcript arrives before the reply starts streaming — swap the
+    // "(voice message)" placeholder as soon as it lands so the user sees what
+    // was heard without waiting for the answer.
+    if (window.clicky.onVoiceTranscript) {
+      window.clicky.onVoiceTranscript((transcript) => {
+        if (!transcript) return;
+        const userMsgs = messages.querySelectorAll('.msg.user');
+        const lastUser = userMsgs[userMsgs.length - 1];
+        if (lastUser && lastUser.textContent === '(voice message)') {
+          lastUser.textContent = transcript;
+        }
+      });
+    }
+
+    window.clicky.onStreamStart(() => {
+      removeWelcome();
+      document.getElementById('loading-msg')?.remove();
+      streamRaw = '';
+      streamProduced = true;
+      streamBubble = document.createElement('div');
+      streamBubble.className = 'msg assistant';
+      messages.appendChild(streamBubble);
+      messages.scrollTop = messages.scrollHeight;
+      hideStatus();
+    });
+
+    window.clicky.onStreamDelta(({ text }) => {
+      if (!streamBubble) return;
+      streamRaw += text;
+      // Plain text while streaming — cheap, flicker-free; markdown at the end.
+      streamBubble.textContent = streamRaw.replace(POINT_RE, '').trim();
+      messages.scrollTop = messages.scrollHeight;
+    });
+
+    window.clicky.onStreamEnd(({ text, error }) => {
+      const finalText = (text || streamRaw).replace(POINT_RE, '').trim();
+      if (error) {
+        // Drop the (usually empty) streaming bubble; the invoke catch shows the
+        // error message as a single source of truth.
+        if (streamBubble) streamBubble.remove();
+      } else if (streamBubble) {
+        if (finalText) {
+          try {
+            streamBubble.innerHTML = marked.parse(finalText, { breaks: true });
+          } catch (e) {
+            streamBubble.textContent = finalText;
+          }
+        } else {
+          streamBubble.textContent = '(no response)';
+        }
+      }
+      streamBubble = null;
+      streamRaw = '';
+      messages.scrollTop = messages.scrollHeight;
+      hideStatus();
+    });
+
     async function send() {
       const text = input.value.trim();
       if (!text) return;
@@ -1004,13 +1079,17 @@
       input.value = '';
 
       addMessage(text, 'user');
+      streamProduced = false;
       addLoading();
 
       try {
         const response = await window.clicky.sendQuery(text);
         document.getElementById('loading-msg')?.remove();
-        const displayText = response.replace(/\[POINT:[^\]]+\]/g, '').trim();
-        addMessage(displayText || '(no response)', 'assistant');
+        // If streaming already rendered the bubble, don't duplicate it.
+        if (!streamProduced) {
+          const displayText = (response || '').replace(POINT_RE, '').trim();
+          addMessage(displayText || '(no response)', 'assistant');
+        }
       } catch (err) {
         document.getElementById('loading-msg')?.remove();
         addMessage('Error: ' + (err.message || err), 'system');
@@ -1146,6 +1225,7 @@
           showStatus('Transcribing your voice...', 'thinking');
 
           addMessage('(voice message)', 'user');
+          streamProduced = false;
           addLoading();
 
           try {
@@ -1164,8 +1244,10 @@
                 lastUser.textContent = result.transcript;
               }
 
-              if (result.response) {
-                const displayText = result.response.replace(/\[POINT:[^\]]+\]/g, '').trim();
+              // The assistant reply streams in via chat:stream-* events; only
+              // fall back to the returned text if no streaming occurred.
+              if (!streamProduced && result.response) {
+                const displayText = result.response.replace(POINT_RE, '').trim();
                 addMessage(displayText || '(no response)', 'assistant');
               }
             }
