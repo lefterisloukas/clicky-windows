@@ -45,6 +45,20 @@ and the queue could advance.
    `NaturalDuration` is known (capped at 5s so a load failure can't hang) and
    sleeps that exact span + a small 250ms tail.
 
+**Follow-up — CPU saturation during Kokoro generation**
+After the playback fix, the machine still stuttered during multi-sentence
+replies. Root cause: onnxruntime-node defaults its CPU execution provider to one
+intra-op thread *per logical core* (12+ here), so each sentence's inference
+pegged every core — and because generation is pipelined with playback, that
+saturation was near-continuous. kokoro-js doesn't forward `session_options`
+through `from_pretrained`, so `kokoro.ts` now caps the intra-op pool to half the
+cores by wrapping the shared `InferenceSession.create` that transformers.js
+calls (same onnxruntime-node instance — verified). The wrap is idempotent and
+fail-safe: if a future dependency upgrade changes how ORT is loaded, it silently
+no-ops back to the default thread count rather than breaking. q4 inference is
+memory-bandwidth bound, so the cap costs little speed while leaving headroom for
+the OS and UI.
+
 **Verification**
 - `npx tsc` exits 0.
 

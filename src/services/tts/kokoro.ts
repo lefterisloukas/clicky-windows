@@ -55,6 +55,50 @@ function resolveModelDir(): string {
   return path.join(appRoot, MODEL_DIR_NAME);
 }
 
+/**
+ * Cap onnxruntime-node's intra-op thread pool so a single TTS generation can't
+ * peg every logical core and stall the whole machine. ORT's CPU execution
+ * provider defaults to one intra-op thread per core (12+ on modern CPUs), which
+ * saturates the system during each sentence's inference — and because we
+ * pipeline generation with playback, that saturation is near-continuous through
+ * a reply. q4 inference is memory-bandwidth bound, so half the cores costs
+ * little speed while leaving ample headroom for the OS, the overlay, and the
+ * Electron UI.
+ *
+ * kokoro-js doesn't forward `session_options` through `from_pretrained`, so we
+ * inject the cap by wrapping the shared `InferenceSession.create` that
+ * transformers.js calls (same onnxruntime-node module instance — verified).
+ * Best-effort and idempotent: if the module isn't ready it silently retries.
+ */
+let onnxThreadsLimited = false;
+function limitOnnxThreads(): void {
+  if (onnxThreadsLimited) return;
+  try {
+    const ort = require("onnxruntime-node");
+    const Session = ort.InferenceSession;
+    const orig = Session.create.bind(Session);
+    const threads = Math.max(1, Math.floor(os.cpus().length / 2));
+    Session.create = (...args: unknown[]) => {
+      const last = args[args.length - 1];
+      const isOpts =
+        !!last &&
+        typeof last === "object" &&
+        !ArrayBuffer.isView(last) &&
+        !(last instanceof ArrayBuffer);
+      if (isOpts) {
+        const o = last as { intraOpNumThreads?: number };
+        if (o.intraOpNumThreads == null) o.intraOpNumThreads = threads;
+      } else {
+        args.push({ intraOpNumThreads: threads });
+      }
+      return orig(...args);
+    };
+    onnxThreadsLimited = true;
+  } catch {
+    /* module not resolvable yet — leave the flag false so a later load retries */
+  }
+}
+
 function loadModel(dtype: "q4" | "q8"): Promise<unknown> {
   const cached = modelPromises.get(dtype);
   if (cached) return cached;
@@ -77,6 +121,7 @@ function loadModel(dtype: "q4" | "q8"): Promise<unknown> {
     env.allowLocalModels = true;
     env.localModelPath = path.dirname(modelDir);
 
+    limitOnnxThreads();
     const { KokoroTTS } = require("kokoro-js");
     return KokoroTTS.from_pretrained(MODEL_DIR_NAME, { dtype, device: "cpu" });
   })();
