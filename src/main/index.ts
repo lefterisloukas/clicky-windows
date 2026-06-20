@@ -159,18 +159,6 @@ function startCursorBuddy(): void {
   }, 16);
 }
 
-function stopCursorBuddy(): void {
-  if (cursorBuddyInterval) {
-    clearInterval(cursorBuddyInterval);
-    cursorBuddyInterval = null;
-  }
-  for (const win of overlayWindows) {
-    if (win && !win.isDestroyed()) {
-      win.webContents.send("overlay:cursor-buddy-visible", false);
-    }
-  }
-}
-
 /**
  * Create one transparent click-through overlay window per display. The
  * array index matches `screen.getAllDisplays()` order, which is also the
