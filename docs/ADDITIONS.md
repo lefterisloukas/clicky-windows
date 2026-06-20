@@ -12,6 +12,7 @@ unless otherwise noted). Newest entries go at the top.
 **Time:** ~ (local, UTC+3)
 **Branch:** `feat/overlay-response-caption`
 **Components:** `src/renderer/overlay/index.html` (primary),
+`src/services/tts/queue.ts`, `src/main/companion.ts`, `src/preload/index.ts`,
 `src/main/settings.ts`, `src/renderer/settings/index.html`
 
 Until now the model's reply surfaced only in the chat window (full text) and via
@@ -26,15 +27,18 @@ Picked from a 3-way design exploration (pill vs. karaoke subtitle vs. ink-pour).
 The pill reuses the existing overlay identity — dark glass with a cyan-tinted
 border (`#22D3EE`), matching the companion capsule.
 
-**How it works (renderer-only — no main/preload/companion changes)**
-- The reply already reaches the overlay: `chat:stream-start/delta/end` are
-  broadcast to *every* window via `CompanionManager.notifyAll`, and the preload
-  already bridges them (`onStreamStart/onStreamDelta/onStreamEnd`). The overlay
-  now listens to the same stream the chat window does.
+**How it works**
+- The reply reaches the overlay via the existing `chat:stream-start/delta/end`
+  broadcast to every window (`CompanionManager.notifyAll`), bridged through
+  preload. The overlay listens to the same stream the chat window does.
 - POINT tags are stripped with the same logic as `chat/index.html`
   (`stripPointTags`), kept in sync as the source of truth.
-- A **catch-up typewriter** (`CAP_CHAR_INTERVAL`, ~45 cps) decouples bursty
+- A **catch-up typewriter** (`CAP_CHAR_INTERVAL`, ~14 cps) decouples bursty
   network deltas from a smooth, steady reveal with a blinking caret.
+- Voice-synced timing is provided by a new `companion:speaking-ended` signal:
+  `TTSQueue.whenIdle()` resolves once playback fully drains, `companion.ts`
+  broadcasts the event off the critical path, and the overlay holds the pill
+  until the voice ends.
 - The caption **anchors once per reply**: to the first POINT tag (and rides that
   point's pass-2 refinement), or — if the answer points at nothing — near the
   real mouse cursor, using the `overlay:companion-anchor` position the overlay

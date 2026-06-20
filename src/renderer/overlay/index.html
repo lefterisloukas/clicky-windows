@@ -84,6 +84,7 @@
       transition: opacity 0.2s ease, transform 0.26s cubic-bezier(0.2, 1.3, 0.4, 1),
                   left 0.4s ease-out, top 0.4s ease-out;
       pointer-events: none;
+      overflow-wrap: break-word;
       z-index: 9997;
     }
 
@@ -106,6 +107,8 @@
     }
     #response[data-tail="top"]::before    { top: -6px;    left: 16px; }
     #response[data-tail="bottom"]::before { bottom: -6px; left: 16px; transform: rotate(225deg); }
+    #response[data-tailx="right"][data-tail="top"]::before    { right: 16px; left: auto; transform: rotate(45deg) scaleX(-1); }
+    #response[data-tailx="right"][data-tail="bottom"]::before { right: 16px; left: auto; transform: rotate(225deg) scaleX(-1); }
 
     /* Unified card: the pointed element's name as a small header above the
        reply, so it doesn't collide with the floating per-point label. */
@@ -538,6 +541,7 @@
       responseEl.classList.remove('visible');
       responseEl.innerHTML = '';
       responseEl.dataset.tail = 'top';
+      responseEl.dataset.tailx = 'left';
     }
 
     function captionRevealDone() {
@@ -584,9 +588,11 @@
       let x = capAnchor.x + CAP_OFFSET_X;
       let y = capAnchor.y + CAP_OFFSET_Y;
       let tail = 'top';
+      let tailx = 'left';
       if (x + w > vw - 8) {                  // overflow right -> flip left
         x = capAnchor.x - w - CAP_OFFSET_X;
         if (x < 8) x = Math.max(8, vw - w - 8);
+        tailx = 'right';                     // tail must mirror to point back
       }
       if (y + h > vh - 8) {                  // overflow bottom -> flip above
         y = capAnchor.y - h - CAP_OFFSET_Y;
@@ -596,6 +602,7 @@
       responseEl.style.left = x + 'px';
       responseEl.style.top = y + 'px';
       responseEl.dataset.tail = tail;
+      responseEl.dataset.tailx = tailx;
     }
 
     function captionShow() {
@@ -616,6 +623,7 @@
             responseEl.innerHTML = '';
             capBodyEl = null;
             responseEl.dataset.tail = 'top';
+            responseEl.dataset.tailx = 'left';
           }
         }, 320);
       }, delay);
