@@ -153,6 +153,69 @@
       #response .cap-caret { animation: none; }
     }
 
+    /* Numbered-map badges — one persistent numbered marker per point. The whole
+       route stays on screen as a map; exactly one badge is `.active` (glowing)
+       at a time, and covered steps become a dimmed `.done` trail. */
+    #badges {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9996;
+    }
+    .badge {
+      position: absolute;
+      min-width: 26px;
+      height: 26px;
+      padding: 0 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 13px;
+      font-family: -apple-system, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: #04121C;
+      background: #5C6B82;
+      border: 2px solid rgba(255, 255, 255, 0.55);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+      opacity: 0.5;
+      transform: translate(-50%, -50%) scale(1);
+      transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.2, 1.3, 0.4, 1),
+                  left 0.4s ease-out, top 0.4s ease-out,
+                  background 0.3s ease, box-shadow 0.3s ease, color 0.3s ease;
+    }
+    .badge.active {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1.12);
+      background: linear-gradient(135deg, #3B82F6, #22D3EE);
+      box-shadow: 0 0 18px rgba(34, 211, 238, 0.9), 0 0 0 3px rgba(255, 255, 255, 0.85);
+    }
+    .badge.active::after {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: inherit;
+      background: rgba(34, 211, 238, 0.4);
+      animation: pulse 1.5s ease-in-out infinite;
+      z-index: -1;
+    }
+    .badge.done {
+      opacity: 0.62;
+      transform: translate(-50%, -50%) scale(1);
+      background: #2D6A4F;
+      color: #DFF7EC;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .badge {
+        transition: opacity 0.3s ease, left 0.4s ease-out, top 0.4s ease-out,
+                    background 0.3s ease, color 0.3s ease;
+      }
+      .badge.active { transform: translate(-50%, -50%) scale(1); }
+      .badge.active::after { animation: none; }
+    }
+
     @keyframes pulse {
       0%, 100% { transform: scale(1); opacity: 0.4; }
       50% { transform: scale(2); opacity: 0; }
@@ -276,6 +339,7 @@
   </svg>
   <div id="cursor"></div>
   <div id="label"></div>
+  <div id="badges"></div>
   <div id="response"></div>
 
   <div id="companion" data-state="listening">
@@ -369,6 +433,10 @@
       window.clicky.onPoint((p) => {
         console.log('[Clicky overlay] onPoint', JSON.stringify(p));
         if (!p || p.kind === 'reset') { reset(); captionReset(); return; }
+
+        // Numbered-map mode owns the whole point lifecycle (badges + per-point
+        // pill); the legacy walking dot below never runs.
+        if (mapEnabled) { mapOnPoint(p); return; }
 
         if (p.kind === 'refine') {
           const ex = points.get(p.id);
@@ -508,6 +576,7 @@
     }
 
     let capEnabled = true;          // cached setting; refreshed each stream-start
+    let mapEnabled = true;          // numbered-map choreography (vs walking dot)
     let capActive = false;          // a reply is currently streaming/showing
     let capRaw = '';                // accumulated raw delta text (POINT tags intact)
     let capTarget = '';             // stripped text we want revealed
@@ -533,6 +602,7 @@
 
     function captionReset() {
       captionClearTimers();
+      mapReset();
       capActive = false;
       capRaw = ''; capTarget = ''; capShown = 0;
       capAnchor = null; capAnchorId = null; capHeader = '';
@@ -634,6 +704,7 @@
     // then linger briefly. A fallback timer (set at stream-end) covers the
     // case where no voice plays (TTS off / errored) so it can't hang forever.
     function captionMaybeFinish() {
+      if (mapOwnsPill) return;  // numbered-map mode runs its own finish/linger
       if (capEnded && capVoiceEnded && captionRevealDone()) {
         if (capFallbackTimer) { clearTimeout(capFallbackTimer); capFallbackTimer = null; }
         captionHide(CAP_LINGER);
@@ -700,10 +771,193 @@
       }
     }
 
+    // ====================================================================
+    // Numbered map — every point gets a persistent numbered badge; exactly one
+    // is active at a time and the shared #response pill rides it showing only
+    // that step's text. Steps advance sequentially: a step is held for a
+    // reading-time estimate (reveal time, words × CAP_MS_PER_WORD, clamped) so
+    // the next pointer never appears until the current one has been read.
+    //
+    // The pill is driven by setting the shared cap* state and calling the same
+    // low-level helpers the caption uses (captionRender/Place/Show/StartTyping);
+    // captionMaybeFinish early-returns while mapOwnsPill so only mapFinish hides.
+    // ====================================================================
+    const mapBadges = document.getElementById('badges');
+    const MAP_MIN_DWELL = 1400;     // ms a step stays even when its text is tiny
+    const MAP_MAX_DWELL = 9000;     // ms cap so one verbose step can't stall the walk
+    const MAP_CLEAR_AFTER = 10000;  // ms after the walk ends before the trail fades away
+    const MAP_FADE_MS = 400;        // badge fade-out duration before removal
+
+    const mapPoints = new Map();    // id -> { id, index, x, y, label, text, el, revealed }
+    const mapOrder = [];            // ids in arrival order
+    let mapActiveId = null;         // currently shown point (stays set while waiting)
+    let mapWaiting = false;         // revealed all arrived points; awaiting more / end
+    let mapStreamEnded = false;     // model finished streaming (no more points coming)
+    let mapOwnsPill = false;        // a point landed → map drives the pill, not the caption
+    let mapAdvanceTimer = null;     // dwell timer for the active step
+    let mapClearTimer = null;       // delay before the finished trail starts fading
+    let mapRemoveTimer = null;      // fade-out window before the badges are removed
+
+    function mapReset() {
+      if (mapAdvanceTimer) { clearTimeout(mapAdvanceTimer); mapAdvanceTimer = null; }
+      if (mapClearTimer) { clearTimeout(mapClearTimer); mapClearTimer = null; }
+      if (mapRemoveTimer) { clearTimeout(mapRemoveTimer); mapRemoveTimer = null; }
+      mapPoints.clear();
+      mapOrder.length = 0;
+      mapActiveId = null;
+      mapWaiting = false;
+      mapStreamEnded = false;
+      mapOwnsPill = false;
+      if (mapBadges) mapBadges.innerHTML = '';
+    }
+
+    function mapMakeBadge(index) {
+      const el = document.createElement('div');
+      el.className = 'badge';
+      el.textContent = index != null ? String(index) : '•';
+      return el;
+    }
+
+    // Point the shared pill at this step and stream its text. Skips the visible
+    // pill when captions are off (silent numbered trail), but still records the
+    // target so the dwell estimate has a length to work with.
+    function mapShowChunk(rec) {
+      if (capTypeTimer) { clearInterval(capTypeTimer); capTypeTimer = null; }
+      capHeader = (rec.label || '').trim();
+      capAnchor = { x: rec.x, y: rec.y };
+      capAnchorId = rec.id;
+      capTarget = (rec.text || '').trim();
+      capShown = 0;
+      capBodyEl = null;
+      responseEl.dataset.tail = 'top';
+      responseEl.dataset.tailx = 'left';
+      if (!capEnabled) return;       // captions off → badges only
+      captionRender();               // build header + body DOM
+      captionPlace();                // glide to the new badge (CSS animates left/top)
+      captionShow();                 // fade in (no-op once already visible)
+      captionStartTyping();          // typewriter (instant under reduced-motion)
+    }
+
+    // Hold the current step for its reading time, then advance.
+    function mapArmDwell() {
+      const words = capTarget ? capTarget.split(/\s+/).filter(Boolean).length : 0;
+      const revealMs = capTarget.length * CAP_CHAR_INTERVAL;
+      const dwellMs = Math.min(
+        MAP_MAX_DWELL,
+        Math.max(revealMs, words * CAP_MS_PER_WORD, MAP_MIN_DWELL)
+      );
+      if (mapAdvanceTimer) clearTimeout(mapAdvanceTimer);
+      mapAdvanceTimer = setTimeout(mapAdvance, dwellMs);
+    }
+
+    function mapAdvance() {
+      if (mapAdvanceTimer) { clearTimeout(mapAdvanceTimer); mapAdvanceTimer = null; }
+      const nextId = mapOrder.find((id) => {
+        const r = mapPoints.get(id);
+        return r && !r.revealed;
+      });
+      if (nextId == null) {
+        // Walked everything that has arrived. Finish only once the model is also
+        // done; otherwise wait — a later point will kick mapAdvance again.
+        if (mapStreamEnded) mapFinish();
+        else mapWaiting = true;
+        return;
+      }
+      mapWaiting = false;
+      // Demote the previous step to a dimmed "done" trail marker.
+      if (mapActiveId != null && mapActiveId !== nextId) {
+        const prev = mapPoints.get(mapActiveId);
+        if (prev && prev.el) { prev.el.classList.remove('active'); prev.el.classList.add('done'); }
+      }
+      mapActiveId = nextId;
+      const rec = mapPoints.get(nextId);
+      rec.revealed = true;
+      if (rec.el) { rec.el.classList.remove('done'); rec.el.classList.add('active'); }
+      mapShowChunk(rec);
+      mapArmDwell();
+    }
+
+    // No more steps and the model is done — let the last step linger, then fade
+    // the pill and mark the final badge done so the whole map reads complete.
+    // The badge trail then auto-clears after MAP_CLEAR_AFTER (a new query wipes
+    // it instantly via mapReset, cancelling both fade timers).
+    function mapFinish() {
+      if (mapActiveId != null) {
+        const rec = mapPoints.get(mapActiveId);
+        if (rec && rec.el) { rec.el.classList.remove('active'); rec.el.classList.add('done'); }
+      }
+      mapActiveId = null;
+      if (capEnabled) captionHide(CAP_LINGER);
+      mapClearBadgesSoon();
+    }
+
+    // Fade the finished badge trail away after a grace period. Two-phase so a new
+    // query's mapReset can cancel either the wait or the fade and never let a
+    // stale timer wipe the next answer's freshly-drawn badges.
+    function mapClearBadgesSoon() {
+      if (mapClearTimer) clearTimeout(mapClearTimer);
+      mapClearTimer = setTimeout(() => {
+        mapClearTimer = null;
+        for (const el of Array.from(mapBadges.children)) el.style.opacity = '0';
+        mapRemoveTimer = setTimeout(() => {
+          mapRemoveTimer = null;
+          mapBadges.innerHTML = '';
+          mapPoints.clear();
+          mapOrder.length = 0;
+          mapActiveId = null;
+        }, MAP_FADE_MS);
+      }, MAP_CLEAR_AFTER);
+    }
+
+    function mapOnPoint(p) {
+      if (!p) return;
+
+      if (p.kind === 'refine') {
+        const rec = mapPoints.get(p.id);
+        if (!rec) return;
+        if (typeof p.x === 'number') rec.x = p.x;
+        if (typeof p.y === 'number') rec.y = p.y;
+        if (typeof p.label === 'string') rec.label = p.label;
+        if (rec.el) { rec.el.style.left = rec.x + 'px'; rec.el.style.top = rec.y + 'px'; }
+        // If the active step is refined, ride the correction with the pill.
+        if (p.id === mapActiveId && capEnabled) {
+          capAnchor = { x: rec.x, y: rec.y };
+          captionPlace();
+        }
+        return;
+      }
+
+      // kind === 'raw' — a new step. Drop its badge immediately as part of the map.
+      capPointSeen = true;
+      mapOwnsPill = true;
+      if (capGraceTimer) { clearTimeout(capGraceTimer); capGraceTimer = null; }
+
+      const el = mapMakeBadge(p.index);
+      el.style.left = p.x + 'px';
+      el.style.top = p.y + 'px';
+      mapBadges.appendChild(el);
+      mapPoints.set(p.id, {
+        id: p.id, index: p.index, x: p.x, y: p.y,
+        label: p.label, text: p.text || '', el, revealed: false,
+      });
+      mapOrder.push(p.id);
+
+      // Kick the walk only when idle: if a step is currently dwelling, this new
+      // point waits its turn and the running dwell timer picks it up.
+      if (mapAdvanceTimer == null && (mapActiveId == null || mapWaiting)) {
+        mapAdvance();
+      }
+    }
+
     function captionOnDelta(text) {
       if (!capEnabled || !capActive) return;
+      if (mapEnabled && mapOwnsPill) return;  // a point landed; the map owns the pill
       capRaw += text;
       capTarget = capStripPointTags(capRaw).replace(/^\s+/, '');  // ltrim only
+      // Map mode: keep the text accumulating, but don't anchor mid-stream — a
+      // first point may still arrive (even after a sentence of preamble). The
+      // zero-point fallback is decided at stream-end, when !mapOwnsPill.
+      if (mapEnabled) return;
       if (capAnchor) {
         captionShow();
         captionStartTyping();
@@ -716,12 +970,14 @@
       window.clicky.onStreamStart(() => {
         captionReset();
         capActive = true;
-        // Refresh the toggle for this query. Cached value gates synchronously;
-        // an IPC round-trip (faster than the first network delta) corrects it.
+        // Refresh both toggles for this query. Cached values gate synchronously;
+        // an IPC round-trip (faster than the first network delta) corrects them.
         if (window.clicky.getSettings) {
           window.clicky.getSettings().then((s) => {
             capEnabled = s ? s.overlayCaptionEnabled !== false : true;
-            if (!capEnabled) captionReset();
+            mapEnabled = s ? s.overlayNumberedMap !== false : true;
+            // Captions off: hide only the pill — never wipe the numbered map.
+            if (!capEnabled) responseEl.classList.remove('visible');
           }).catch(() => {});
         }
       });
@@ -734,6 +990,17 @@
     if (window.clicky && window.clicky.onStreamEnd) {
       window.clicky.onStreamEnd(({ text, error }) => {
         if (!capActive) return;
+
+        // Numbered-map mode: the model is done, so no more points are coming.
+        // Mark it so the walk can finish/linger once it reaches the last step.
+        // If the walk is idle right now (not mid-dwell), kick it to finish.
+        if (mapEnabled && mapOwnsPill) {
+          if (error) return;          // keep the badges; the next query resets them
+          mapStreamEnded = true;
+          if (mapAdvanceTimer == null) mapAdvance();
+          return;
+        }
+
         if (error || !capEnabled) { captionReset(); return; }
         capEnded = true;
         if (typeof text === 'string' && text) {
@@ -774,10 +1041,13 @@
       });
     }
 
-    // Prime the cached toggle value at load.
+    // Prime the cached toggle values at load.
     if (window.clicky && window.clicky.getSettings) {
       window.clicky.getSettings()
-        .then((s) => { capEnabled = s ? s.overlayCaptionEnabled !== false : true; })
+        .then((s) => {
+          capEnabled = s ? s.overlayCaptionEnabled !== false : true;
+          mapEnabled = s ? s.overlayNumberedMap !== false : true;
+        })
         .catch(() => {});
     }
   </script>

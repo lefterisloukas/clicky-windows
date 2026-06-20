@@ -45,9 +45,15 @@ const MAX_CONVERSATION_HISTORY = 10;
  * estimate, shown immediately; `kind:"refine"` carries refined coordinates for
  * the same `id` and updates the already-shown point in place; `kind:"reset"`
  * clears the overlay at the start of a new query.
+ *
+ * `index` is the 1-based step number across the whole reply (numbered-map mode);
+ * `text` is the point's lead-in narration. Both ride along on `raw`; `index` is
+ * carried on `refine` (so a re-render keeps its number), `text` is not.
  */
 interface OverlayPoint {
   id?: string;
+  index?: number;
+  text?: string;
   x?: number;
   y?: number;
   label?: string;
@@ -201,6 +207,9 @@ export class CompanionManager {
       // 3. Streaming consumers.
       const pointEx = new IncrementalPointExtractor();
       const sentenceEx = new IncrementalSentenceExtractor();
+      // 1-based step number across this reply, for the overlay's numbered map.
+      // Query-local (resets per query), unlike the lifetime `pointSeq` id source.
+      let stepIndex = 0;
       if (this.settings.get("ttsEnabled")) {
         session.tts = new TTSQueue(this.settings);
       }
@@ -217,19 +226,23 @@ export class CompanionManager {
 
         // 3b. Points: show the raw estimate immediately; for Claude, refine
         //     concurrently and nudge the same point into place when it returns.
-        for (const tag of pointEx.push(chunk)) {
+        for (const { tag, text } of pointEx.push(chunk)) {
           const id = `p${this.pointSeq++}`;
           const prepared = this.prepareTag(tag, screenshots);
           if (!prepared) continue;
+          // Number only points we actually render, so the badges read 1,2,3…
+          const index = ++stepIndex;
           this.sendPoint(prepared.overlayIdx, {
             id,
+            index,
+            text,
             x: prepared.x,
             y: prepared.y,
             label: tag.label,
             kind: "raw",
           });
           if (aiProviderName === "anthropic") {
-            void this.refineTagAsync(tag, id, screenshots, session);
+            void this.refineTagAsync(tag, id, index, screenshots, session);
           }
         }
 
@@ -369,6 +382,7 @@ export class CompanionManager {
   private async refineTagAsync(
     tag: RawPointTag,
     id: string,
+    index: number,
     screenshots: ScreenshotResult[],
     session: QuerySession
   ): Promise<void> {
@@ -399,6 +413,7 @@ export class CompanionManager {
       );
       this.sendPoint(prepared.overlayIdx, {
         id,
+        index,
         x: prepared.x,
         y: prepared.y,
         label: tag.label,

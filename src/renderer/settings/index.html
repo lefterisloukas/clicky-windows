@@ -366,6 +366,7 @@
     <div class="sw"><span class="ic">⇧</span><span class="lbl">Always on top</span><span class="track" id="alwaysOnTop"><i></i></span></div>
     <div class="sw"><span class="ic">✷</span><span class="lbl">Cursor buddy<small>blue glow follows the mouse</small></span><span class="track" id="cursorBuddyEnabled"><i></i></span></div>
     <div class="sw"><span class="ic">💬</span><span class="lbl">Response caption<small>streams the reply near the cursor</small></span><span class="track" id="overlayCaptionEnabled"><i></i></span></div>
+    <div class="sw"><span class="ic">①</span><span class="lbl">Numbered steps<small>guide one point at a time, in order</small></span><span class="track" id="overlayNumberedMap"><i></i></span></div>
     <div class="sw"><span class="ic">⛨</span><span class="lbl">HIPAA mode<small>local processing only</small></span><span class="track" id="hipaaMode"><i></i></span></div>
   </div>
 
@@ -527,7 +528,7 @@
       renderGeminiModelDropdown(S.geminiModel || GEMINI_DEFAULT_MODEL, S.geminiModelList || []);
 
       // toggles
-      ['alwaysOnTop','cursorBuddyEnabled','overlayCaptionEnabled','hipaaMode'].forEach((k) => $(k).classList.toggle('on', !!S[k]));
+      ['alwaysOnTop','cursorBuddyEnabled','overlayCaptionEnabled','overlayNumberedMap','hipaaMode'].forEach((k) => $(k).classList.toggle('on', !!S[k]));
 
       refreshAll();
 
@@ -601,6 +602,7 @@
     wireToggle('alwaysOnTop');
     wireToggle('cursorBuddyEnabled');
     wireToggle('overlayCaptionEnabled');
+    wireToggle('overlayNumberedMap');
     wireToggle('hipaaMode', (on) => {
       if (!on) return;
       // Force fully-local processing: whisper-local STT + local/Kokoro TTS.

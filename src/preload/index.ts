@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld("clicky", {
   onPoint: (
     callback: (point: {
       id?: string;
+      index?: number;
+      text?: string;
       x?: number;
       y?: number;
       label?: string;

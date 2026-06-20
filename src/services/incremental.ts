@@ -66,6 +66,23 @@ export interface RawPointTag {
   screen: number;
 }
 
+/**
+ * A POINT tag plus the prose that led up to it — the narration the model wrote
+ * before pointing (e.g. "Open Settings from the sidebar" before the Settings
+ * tag). The overlay's numbered-map mode shows this `text` beside that point so
+ * the words and the highlighted target stay co-located.
+ *
+ * CONTRACT: this `text` is "everything since the previous tag," so it only reads
+ * as a whole instruction if each tag sits at the END of its sentence. The system
+ * prompt (`services/prompt.ts`) requires exactly that placement — if that prompt
+ * rule is ever relaxed back to inline/mid-sentence tags, this lead-in will be cut
+ * mid-sentence and steps will fragment. The two must change together.
+ */
+export interface ExtractedPoint {
+  tag: RawPointTag;
+  text: string;
+}
+
 // Complete POINT tag. The label class excludes `]` (as well as `:`) so a `]`
 // in surrounding prose can never be swallowed into a label, which would let a
 // malformed match consume far too much text.
@@ -73,35 +90,61 @@ const POINT_TAG = /\[POINT:(\d+),(\d+):([^:\]]+):screen(\d+)\]/g;
 
 /**
  * Feed streamed text fragments in via `push`; receive each complete POINT tag
- * exactly once. A tag split across two network chunks (e.g. `[POINT:120,3` then
- * `0:Save:screen0]`) is held in the internal buffer until it closes.
+ * exactly once, paired with the prose that preceded it. A tag split across two
+ * network chunks (e.g. `[POINT:120,3` then `0:Save:screen0]`) is held in the
+ * internal buffer until it closes; the bytes of that partial tag are never
+ * mistaken for prose.
  */
 export class IncrementalPointExtractor {
   private buf = "";
+  // Settled prose seen since the last emitted tag, carried across pushes so a
+  // point's lead-in survives the bounded-buffer trim below. Reset to "" each
+  // time a tag is emitted (it becomes that tag's `text`).
+  private sinceTag = "";
 
-  push(chunk: string): RawPointTag[] {
+  push(chunk: string): ExtractedPoint[] {
     this.buf += chunk;
-    const out: RawPointTag[] = [];
+    const out: ExtractedPoint[] = [];
 
     POINT_TAG.lastIndex = 0;
     let lastEnd = 0;
+    let prevEnd = 0;
     let m: RegExpExecArray | null;
     while ((m = POINT_TAG.exec(this.buf)) !== null) {
+      // Prose from just after the previous tag (or buffered from earlier pushes
+      // via sinceTag) up to the start of this one. Defensively strip any stray
+      // complete tag the slice might contain.
+      const lead = (this.sinceTag + this.buf.slice(prevEnd, m.index)).replace(
+        ANY_POINT_TAG,
+        ""
+      );
+      this.sinceTag = "";
       out.push({
-        x: parseInt(m[1], 10),
-        y: parseInt(m[2], 10),
-        label: m[3],
-        screen: parseInt(m[4], 10),
+        tag: {
+          x: parseInt(m[1], 10),
+          y: parseInt(m[2], 10),
+          label: m[3],
+          screen: parseInt(m[4], 10),
+        },
+        text: lead.trim(),
       });
+      prevEnd = POINT_TAG.lastIndex;
       lastEnd = POINT_TAG.lastIndex;
     }
 
     // Retain only the tail that could still grow into a tag: everything from the
-    // last unmatched `[` onward. Anything before it is settled prose we can drop
-    // so the buffer stays bounded on long replies.
+    // last unmatched `[` onward. The settled prose before it can't be part of a
+    // future tag, so fold it into sinceTag (it's the next point's lead-in) and
+    // drop it from buf to stay bounded on long replies.
     const tail = this.buf.slice(lastEnd);
     const open = tail.lastIndexOf("[");
-    this.buf = open >= 0 ? tail.slice(open) : "";
+    if (open >= 0) {
+      this.sinceTag += tail.slice(0, open);
+      this.buf = tail.slice(open);
+    } else {
+      this.sinceTag += tail;
+      this.buf = "";
+    }
 
     return out;
   }

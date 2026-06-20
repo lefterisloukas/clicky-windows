@@ -6,7 +6,109 @@ unless otherwise noted). Newest entries go at the top.
 
 ---
 
-## 2026-06-20
+## 2026-06-21
+
+### feat/overlay-numbered-map — move POINT tags to end-of-sentence (prompt↔parser contract)
+**Branch:** `feat/overlay-numbered-map`
+**Components:** `src/services/prompt.ts`, `src/services/incremental.ts` (doc only)
+
+⚠️ **Surgical / critical — read before touching either file.** This couples the
+shared system prompt to the point-text parser. They must change together.
+
+**Why.** The numbered map shows each step's text beside its pointer. That text
+comes from `IncrementalPointExtractor`, which assigns each tag "the prose since
+the previous tag." The prompt, however, taught the model to embed tags
+*mid-sentence* (`...click the "Share" button [POINT…] in the top right corner.`),
+so the per-step text came out fragmented: step 1 lost "in the top right corner"
+and step 2 inherited that orphan clause; a trailing clause after the last tag was
+dropped entirely. Observed live on Gemini with a Trello "share / add list / add
+card" query.
+
+**Decision.** Fix it prompt-side, not parser-side. We considered a sentence-aware
+parser (robust to any placement) but it adds ~40 lines of streaming
+sentence-segmentation. Since the model's tag placement is something we control
+via the prompt, and the existing lead-in extractor already yields a whole
+sentence *when the tag sits at the sentence end*, the cheaper, equally-correct fix
+is to require that placement. The coordinate space is unchanged (coords live in
+the tag regardless of position), so pointing accuracy is unaffected. The
+sentence-aware parser stays in reserve if a model proves non-compliant.
+
+**Change.** `prompt.ts` now requires each element's POINT tag at the **end** of
+its sentence (after the closing punctuation), one sentence = one step = one tag:
+- New "Tag placement" section + rewritten rule 3 & 4 (was "tags can appear inline
+  anywhere").
+- All worked examples moved to end-of-sentence; added a multi-step example.
+- Counter-example added for the mid-sentence mistake; the old "correct" example
+  (which itself showed an inline tag) fixed to end-of-sentence.
+- New pre-send checklist item: each tag at the end of its sentence.
+
+`incremental.ts` is unchanged in behavior — only a CONTRACT note added on
+`ExtractedPoint` documenting that the lead-in text reads as a whole instruction
+**only** because the prompt guarantees end-of-sentence placement.
+
+**Verification.** `npx tsc` clean. Live: re-run a multi-step query and confirm
+each step's pill shows one complete sentence (no orphan leading clause, no dropped
+trailing clause). If a provider slips a tag mid-sentence, that one step will
+fragment — the signal to revive the sentence-aware parser.
+
+### feat/overlay-numbered-map — guide multi-point answers one step at a time
+**Branch:** `feat/overlay-numbered-map`
+**Components:** `src/services/incremental.ts`, `src/main/companion.ts`,
+`src/preload/index.ts`, `src/main/settings.ts`,
+`src/renderer/settings/index.html`, `src/renderer/overlay/index.html`
+
+When the model pointed at 2–3 UI elements in one answer, the overlay split the
+user's attention: a single blue dot walked points 1→2→3 on a blind 2-second
+timer while the text pill anchored once to point 1 and streamed the whole reply
+there — so the full answer sat at point 1 while the dot was already at point 3.
+
+The new **Numbered Map** replaces that choreography. Every point gets a
+persistent numbered badge (①②③) that stays on screen as a route map; exactly one
+badge glows at a time, covered steps dim into a "done" trail, and the pill rides
+the **active** badge showing only **that step's** text — so words and the
+highlighted target are always co-located. Steps advance sequentially, never
+before the current one has been read.
+
+**How it works**
+- **Per-point text.** `IncrementalPointExtractor.push` now returns
+  `{ tag, text }[]`, where `text` is the prose that preceded each tag (its
+  lead-in narration). A `sinceTag` accumulator carries settled prose across
+  pushes so a point's lead-in survives the bounded-buffer trim, and the bytes of
+  a tag split across network chunks are never mistaken for prose.
+- **Numbering.** `companion.ts` assigns a query-local 1-based `index` to each
+  rendered point and sends `index` + `text` on the `overlay:point` payload
+  (`refine` carries `index` only). Numbering is assigned centrally so it stays
+  globally sequential across monitors (each overlay window sees only its own
+  display's subset).
+- **Renderer.** `overlay/index.html` gains a `#badges` layer and a `mapOnPoint`
+  /`mapAdvance` engine. The shared `#response` pill is reused per-step by setting
+  the `cap*` state and calling the existing `captionRender/Place/Show/StartTyping`
+  helpers; `captionMaybeFinish` early-returns while `mapOwnsPill`, so only
+  `mapFinish` hides the pill (at the end of the walk, not between steps).
+- **Advancement (phased).** A step is held for a reading-time estimate
+  (`max(reveal time, words × CAP_MS_PER_WORD, 1400 ms)`, capped at 9 s), so the
+  next pointer never appears before the current step is read. *Phase 2 (separate
+  PR)* will gate on true speech-finished via per-step markers through the TTS
+  queue.
+- **Trail lifecycle.** The badge map stays up while you work through it, then
+  auto-clears: the pill fades `CAP_LINGER` (1.5 s) after the last step, and the
+  badges fade out `MAP_CLEAR_AFTER` (10 s) after the walk ends (`mapFinish`).
+  Two cancellable timers (`mapClearTimer` wait, `mapRemoveTimer` fade) back this
+  so a new query's `mapReset` wipes the trail instantly and a pending clear can
+  never erase the next answer's badges.
+
+**Setting.** New `overlayNumberedMap` toggle (default **on**), shown in settings
+as "Numbered steps". The existing `overlayCaptionEnabled` stays the master
+"show any pill text" switch — captions off + map on gives a silent numbered
+trail. Toggling off restores the legacy walking-dot choreography (kept intact as
+a fallback). The flag is read at each query's stream-start.
+
+**Edge cases handled.** Zero-point answers fall back to the cursor-anchored full
+caption (decided at stream-end so a sentence of preamble before the first point
+doesn't trigger it early); single-point answers show one badge + pill; refine
+nudges the badge (and the pill if it's the active step); a superseded query's
+reset clears badges, timers, and the pill; `prefers-reduced-motion` drops the
+glow/pulse and reveals text instantly while still honoring the read dwell.
 
 ### fix/forgotten-fixes — apply leftover PR #1 review fixes
 **Branch:** `fix/forgotten-fixes`
