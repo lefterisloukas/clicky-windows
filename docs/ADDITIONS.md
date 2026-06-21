@@ -8,6 +8,30 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-21
 
+### feat/overlay-numbered-map — caption pill follows the cursor (tray toggle)
+**Branch:** `feat/overlay-numbered-map`
+**Components:** `src/main/settings.ts`, `src/main/tray.ts`, `src/main/index.ts`,
+`src/renderer/overlay/index.html`
+
+The caption pill anchored once and stayed put. It now **follows the cursor by
+default**, with a tray menu checkbox **"Caption follows cursor"** that, when
+unchecked, restores the anchored-once behavior.
+
+No new cursor feed was needed: `overlay:companion-anchor` already streams the live
+cursor position every 16 ms (`startCursorBuddy`); the pill simply never re-read it.
+
+- New setting `overlayCaptionFollowCursor` (default `true`).
+- `tray.ts` takes the `SettingsStore` and adds a `checkbox` item reading/writing
+  it (the tray is the only writer, so Electron's checkbox state stays in sync
+  without a rebuild).
+- Overlay caches `captionFollow` (with `capEnabled`/`ttsOn`); in the existing
+  `onCompanionAnchor` handler it updates `capAnchor` + `captionPlace()` each tick
+  while a caption is live and following. The `#response` `left/top` transition was
+  shortened to `0.15s` so following glides instead of jittering. Off → `capAnchor`
+  is never updated after `beginReveal`, so the pill stays put.
+- Read at the next query's `stream-start` (cached), like `overlayCaptionEnabled`.
+  Badges always stay anchored to their elements, in both modes.
+
 ### feat/overlay-numbered-map — lock the "cursor pill + numbered constellation" behavior
 **Branch:** `feat/overlay-numbered-map`
 **Components:** `src/renderer/overlay/index.html`, `src/services/incremental.ts`,

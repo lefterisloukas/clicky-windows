@@ -575,12 +575,15 @@ app.whenReady().then(() => {
 
   setupIPC();
 
-  createTray({
-    onChat: () => openChatWindow(),
-    onSettings: () => showPopover(),
-    onToggle: () => togglePopover(),
-    onQuit: () => app.quit(),
-  });
+  createTray(
+    {
+      onChat: () => openChatWindow(),
+      onSettings: () => showPopover(),
+      onToggle: () => togglePopover(),
+      onQuit: () => app.quit(),
+    },
+    settings
+  );
 
   const hotkeyManager = new HotkeyManager(settings, ensureChatReady);
   hotkeyManager.register();

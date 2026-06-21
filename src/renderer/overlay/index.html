@@ -36,7 +36,7 @@
       opacity: 0;
       transform: scale(0.82);
       transition: opacity 0.2s ease, transform 0.26s cubic-bezier(0.2, 1.3, 0.4, 1),
-                  left 0.4s ease-out, top 0.4s ease-out;
+                  left 0.15s ease-out, top 0.15s ease-out;
       pointer-events: none;
       overflow-wrap: break-word;
       z-index: 9997;
@@ -320,6 +320,13 @@
           anchor.y = data.y;
           companion.style.left = data.x + 'px';
           companion.style.top = data.y + 'px';
+          // The pill floats next to the cursor — follow it live while a caption
+          // is showing (unless the tray toggle pinned it). The CSS left/top
+          // transition smooths the motion into a gentle trail.
+          if (capActive && capAnchor && captionFollow) {
+            capAnchor = { x: data.x, y: data.y };
+            captionPlace();
+          }
         }
         updateCompanion();
       });
@@ -388,6 +395,7 @@
 
     // ---- settings (cached; refreshed each stream-start) ----
     let capEnabled = true;          // show the pill text at all
+    let captionFollow = true;       // pill follows the cursor (tray toggle); else stays put
     let ttsOn = true;               // is TTS enabled? gates whether we wait for voice
 
     // ---- caption state ----
@@ -656,6 +664,7 @@
         if (window.clicky.getSettings) {
           window.clicky.getSettings().then((s) => {
             capEnabled = s ? s.overlayCaptionEnabled !== false : true;
+            captionFollow = s ? s.overlayCaptionFollowCursor !== false : true;
             ttsOn = s ? s.ttsEnabled !== false : true;
             if (!capEnabled) responseEl.classList.remove('visible');
             if (!ttsOn && !revealStarted) beginReveal();  // no voice to wait for
@@ -723,6 +732,7 @@
       window.clicky.getSettings()
         .then((s) => {
           capEnabled = s ? s.overlayCaptionEnabled !== false : true;
+          captionFollow = s ? s.overlayCaptionFollowCursor !== false : true;
           ttsOn = s ? s.ttsEnabled !== false : true;
         })
         .catch(() => {});
