@@ -54,6 +54,9 @@ export class AudioCapture {
 
           const transcript = await this.transcribe(Buffer.from(audioData));
           if (!transcript || !transcript.trim()) {
+            // No query runs, so processQuery's terminal "done" stage never
+            // fires — send one so the overlay leaves its thinking state.
+            this.signalProcessingDone();
             return { error: "No speech detected" };
           }
 
@@ -74,10 +77,14 @@ export class AudioCapture {
             return { transcript, response };
           }
 
+          this.signalProcessingDone();
           return { transcript, error: "Companion not ready" };
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error("Voice pipeline error:", msg);
+          // Transcription/pipeline failed before (or instead of) processQuery's
+          // own "done"; signal idle so the overlay doesn't hang in thinking.
+          this.signalProcessingDone();
           return { error: msg };
         }
       }
@@ -194,6 +201,16 @@ export class AudioCapture {
         win.webContents.send(channel, data);
       }
     });
+  }
+
+  /**
+   * Broadcast the pipeline's terminal "done" stage. processQuery emits this
+   * itself on the normal path; we only need it on the early-exit paths (empty
+   * transcript, transcription error) where processQuery never runs, so the
+   * overlay's companion can leave its thinking state and return to idle.
+   */
+  private signalProcessingDone(): void {
+    this.notifyChat("companion:stage", { stage: "done", label: "" });
   }
 }
 

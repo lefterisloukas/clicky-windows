@@ -288,16 +288,27 @@
 
     // ---- Cursor buddy tracking ----
     const cursorBuddy = document.getElementById('cursor-buddy');
+    let buddyWanted = false;   // does the main process want the spark shown here?
+
+    // The spark is the IDLE indicator only. Listening/thinking have their own
+    // motion (eq-bars / spinner), so suppress the spark in those states. Shown
+    // only when main is streaming it (enabled + cursor on this display) AND idle.
+    function applyBuddyVisibility() {
+      cursorBuddy.classList.toggle('visible', buddyWanted && companionState === 'idle');
+    }
+
     if (window.clicky && window.clicky.onCursorBuddy) {
       window.clicky.onCursorBuddy((x, y) => {
         cursorBuddy.style.left = x + 'px';
         cursorBuddy.style.top = y + 'px';
-        if (!cursorBuddy.classList.contains('visible')) cursorBuddy.classList.add('visible');
+        buddyWanted = true;
+        applyBuddyVisibility();
       });
     }
     if (window.clicky && window.clicky.onCursorBuddyVisible) {
       window.clicky.onCursorBuddyVisible((visible) => {
-        cursorBuddy.classList.toggle('visible', !!visible);
+        buddyWanted = !!visible;
+        applyBuddyVisibility();
       });
     }
 
@@ -310,6 +321,7 @@
       const show = companionState !== 'idle' && anchor.active;
       if (companionState !== 'idle') companion.dataset.state = companionState;
       companion.classList.toggle('visible', show);
+      applyBuddyVisibility();   // hide the spark while listening/thinking; restore on idle
     }
 
     if (window.clicky && window.clicky.onCompanionAnchor) {
@@ -357,7 +369,12 @@
     if (window.clicky && window.clicky.onRecordingChanged) {
       window.clicky.onRecordingChanged((isRecording) => {
         if (isRecording) companionState = 'listening';
-        else if (companionState === 'listening') companionState = 'idle';
+        // Mic released → transcription + query follow. Bridge straight to
+        // 'thinking' (the pipeline's 'capturing'/'querying' stages arrive a beat
+        // later) so we never flash 'idle' — which would briefly resurface the
+        // spark. A terminal 'done' (success, or the no-query paths in audio.ts)
+        // returns us to idle; Escape uses a separate 'recording-cancelled' event.
+        else if (companionState === 'listening') companionState = 'thinking';
         updateCompanion();
       });
     }
@@ -499,6 +516,7 @@
     }
 
     function captionShow() {
+      if (!capTarget) return;   // no text yet — don't reveal an empty pill
       if (!responseEl.classList.contains('visible')) {
         captionPlace();
         requestAnimationFrame(() => responseEl.classList.add('visible'));

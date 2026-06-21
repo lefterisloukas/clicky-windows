@@ -8,6 +8,52 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-21
 
+### feat/spark-idle-only — no spark flash on mic-release; no empty caption pill
+**Branch:** `feat/spark-idle-only`
+**Components:** `src/renderer/overlay/index.html`, `src/main/audio.ts`
+
+Two UX follow-ups to the spark-idle-only change below:
+
+- **No spark flash between listening and thinking.** On mic release the overlay
+  briefly dropped to `idle` (re-showing the spark) before the pipeline's
+  `capturing`/`querying` stages arrived and switched it to `thinking` — the
+  transcription gap was a visible flicker. `onRecordingChanged(false)` now
+  bridges `listening → thinking` directly, so the spark stays hidden
+  continuously through processing. Because the no-query paths in `audio.ts`
+  (empty transcript, transcription error) never run `processQuery` — and so
+  never emit its terminal `done` stage — they now broadcast `done` themselves
+  (new `signalProcessingDone()` helper) so the companion can't get stuck
+  spinning. Escape-cancel is unaffected: it uses a separate `recording-cancelled`
+  event that still returns straight to idle.
+- **No empty caption pill.** The pill could appear before any text streamed in
+  (the TTS-off path begins the reveal at stream-start; the 4s backstop can fire
+  before the first delta), showing an empty bubble. `captionShow()` now bails
+  out while `capTarget` is empty, so the pill only appears once there is text to
+  type. The anchor is still fixed at reveal time; only the reveal waits.
+
+### feat/spark-idle-only — cursor spark shows only when idle
+**Branch:** `feat/spark-idle-only`
+**Components:** `src/renderer/overlay/index.html`
+
+The spinning 4-pointed cursor "spark" (`#cursor-buddy`) was shown in **every**
+state, so during listening and thinking it spun on top of the companion's own
+motion (the eq-bars and the conic ring spinner) — redundant clutter, since those
+states already have a dedicated icon. The spark is now the **idle indicator
+only**: it appears when idle (and when `cursorBuddyEnabled` is on) and is
+suppressed while listening or thinking.
+
+Renderer-only change — `companionState` lives solely in the overlay renderer, so
+no main-process, preload, or IPC changes were needed. A new `buddyWanted` flag
+records whether the main process is streaming the spark to this window (set by
+the existing `overlay:cursor-buddy` / `overlay:cursor-buddy-visible` handlers),
+and a single `applyBuddyVisibility()` gate shows the spark only when
+`buddyWanted && companionState === 'idle'`. It is re-evaluated from
+`updateCompanion()`, which already runs on every state transition, so the spark
+fades out the instant we enter listening/thinking and returns on idle (the 16 ms
+cursor tick re-asserts `buddyWanted`). The spark still shows during the
+speaking/done stages, which map to idle. The existing `opacity 0.3s ease`
+transition gives the fade for free.
+
 ### feat/overlay-numbered-map — PR #7 review fixes (pill migrates across monitors)
 **Branch:** `feat/overlay-numbered-map`
 **Components:** `src/renderer/overlay/index.html`
