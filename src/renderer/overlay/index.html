@@ -320,12 +320,32 @@
           anchor.y = data.y;
           companion.style.left = data.x + 'px';
           companion.style.top = data.y + 'px';
-          // The pill floats next to the cursor — follow it live while a caption
-          // is showing (unless the tray toggle pinned it). The CSS left/top
-          // transition smooths the motion into a gentle trail.
-          if (capActive && capAnchor && captionFollow) {
+        }
+        // Caption-follows-cursor: the pill rides whichever display holds the
+        // cursor, migrating across monitors live. Only while a caption is active,
+        // enabled, revealing, and following (the tray toggle); pinned mode never
+        // migrates. The CSS left/top transition smooths motion into a gentle trail.
+        if (capActive && capEnabled && captionFollow && revealStarted) {
+          if (data.active && !capOwner) {
+            // Cursor just arrived on this display — take over the pill. Jump to
+            // the fully-revealed text: the typewriter already ran on the prior
+            // display, and replaying it here would desync from the voice.
+            capOwner = true;
+            capAnchor = { x: data.x, y: data.y };
+            if (capShown < capTarget.length) capShown = capTarget.length;
+            captionRender();
+            captionShow();
+          } else if (data.active) {
             capAnchor = { x: data.x, y: data.y };
             captionPlace();
+          } else if (capOwner) {
+            // Cursor left this display — release the pill (hide it here; the
+            // display the cursor moved to picks it up). Drop the anchor so a
+            // later delta can't re-show the hidden pill, and stop the typewriter.
+            capOwner = false;
+            capAnchor = null;
+            if (capTypeTimer) { clearInterval(capTypeTimer); capTypeTimer = null; }
+            responseEl.classList.remove('visible');
           }
         }
         updateCompanion();
@@ -381,6 +401,9 @@
     const REVEAL_BACKSTOP = 4000;    // ms to start reveal if no voice signal arrives
     const BADGE_STAGGER = 500;       // ms between cascade reveals
     const FADE_MS = 360;             // pill/badge fade-out before DOM clear
+    const VOICE_HANG_PAD = 10000;    // extra slack on the TTS-on hang backstop so a
+                                     // dropped speaking-ended can't strand the pill,
+                                     // without the estimate ever preempting real speech
 
     // POINT-tag stripping — kept in sync with chat/index.html (source of truth).
     const CAP_POINT_RE = /\[POINT:[^\]]+\]/g;
@@ -408,10 +431,11 @@
     let capVoiceEnded = false;      // voice finished (real signal or estimate)
     let capTypeTimer = null;
     let capBodyEl = null;
+    let capOwner = false;           // this window currently shows the pill (the
+                                    // display the cursor is on); drives migration
 
     // ---- lifecycle state ----
     let revealStarted = false;      // reveal (caption + cascade) has begun
-    let voiceStarted = false;       // companion:speaking-started arrived
     let finished = false;           // finishAll has been armed
     let revealBackstop = null;      // start-reveal backstop timer
     let fallbackTimer = null;       // TTS-off "voice done" estimate timer
@@ -554,7 +578,8 @@
       revealStarted = true;
       if (revealBackstop) { clearTimeout(revealBackstop); revealBackstop = null; }
       if (capEnabled && !capAnchor && anchor.active) {
-        capAnchor = { x: anchor.x, y: anchor.y };  // anchor once; don't chase the mouse
+        capAnchor = { x: anchor.x, y: anchor.y };  // anchor where the cursor is now
+        capOwner = true;                           // this display shows the pill
         captionShow();
         captionStartTyping();
       }
@@ -586,9 +611,10 @@
     // ---------- finish / fade ----------
     function maybeFinish() {
       if (finished || !capEnded || !capVoiceEnded) return;
-      // If the pill is showing, wait for it to finish typing so a fast voice
-      // can't fade the text mid-reveal. (No pill on this window → don't wait.)
-      if (capEnabled && capAnchor && !captionRevealDone()) return;
+      // If this window owns the pill, wait for it to finish typing so a fast
+      // voice can't fade the text mid-reveal. (Badge-only / released windows
+      // don't own a pill, so they don't wait.)
+      if (capEnabled && capOwner && !captionRevealDone()) return;
       finished = true;
       if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
       const holdMs = globalCount >= 2 ? HOLD_MULTI : HOLD_SINGLE;
@@ -597,6 +623,10 @@
 
     function fadeAll() {
       const myToken = token;
+      // Stop the pill following the cursor the instant the fade begins, so a
+      // mouse move into another display can't re-acquire a pill that's leaving.
+      capActive = false;
+      capOwner = false;
       responseEl.classList.remove('visible');
       for (const rec of badges.values()) {
         rec.el.classList.remove('show');
@@ -611,7 +641,6 @@
         badgesEl.innerHTML = '';
         badges.clear();
         order.length = 0;
-        capActive = false;
       }, FADE_MS);
     }
 
@@ -623,10 +652,10 @@
       if (revealBackstop) { clearTimeout(revealBackstop); revealBackstop = null; }
       if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
       if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
-      capActive = false;
+      capActive = false; capOwner = false;
       capRaw = ''; capTarget = ''; capShown = 0; capAnchor = null;
       capEnded = false; capVoiceEnded = false; capBodyEl = null;
-      revealStarted = false; voiceStarted = false; finished = false;
+      revealStarted = false; finished = false;
       globalCount = 0; scheduledUntil = 0;
       badges.clear(); order.length = 0;
       badgesEl.innerHTML = '';
@@ -694,18 +723,21 @@
         if (!revealStarted) beginReveal();             // last chance to anchor
         if (capEnabled && capAnchor) { captionShow(); captionStartTyping(); }
 
-        // TTS-off / no-voice path: treat "voice done" as the estimated speech
-        // duration so the absorb hold still runs. The real speaking-ended
-        // signal, if it comes, fires maybeFinish first and clears this.
+        // "Voice done" fallback. With TTS off, the estimated speech duration IS
+        // the signal (no real speaking-ended ever comes). With TTS on, the real
+        // companion:speaking-ended is authoritative — here we only arm a generous
+        // backstop (estimate + pad) so a dropped signal can't strand the pill,
+        // padded so it never fires before speech that started late actually ends.
         const words = capTarget.trim() ? capTarget.trim().split(/\s+/).length : 0;
         const estSpeechMs = words * CAP_MS_PER_WORD;
         const revealRemainingMs = Math.max(0, capTarget.length - capShown) * CAP_CHAR_INTERVAL;
+        const baseMs = Math.max(revealRemainingMs, estSpeechMs);
         if (fallbackTimer) clearTimeout(fallbackTimer);
         fallbackTimer = setTimeout(() => {
           fallbackTimer = null;
           capVoiceEnded = true;
           maybeFinish();
-        }, Math.max(revealRemainingMs, estSpeechMs));
+        }, ttsOn ? baseMs + VOICE_HANG_PAD : baseMs);
 
         maybeFinish();  // very short reply: voice may have already ended
       });
@@ -714,7 +746,6 @@
     if (window.clicky && window.clicky.onSpeakingStarted) {
       window.clicky.onSpeakingStarted(() => {
         if (!capActive) return;            // stale event from a prior query
-        voiceStarted = true;
         if (!revealStarted) beginReveal();
       });
     }

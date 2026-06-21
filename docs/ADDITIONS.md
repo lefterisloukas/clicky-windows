@@ -8,6 +8,31 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-21
 
+### feat/overlay-numbered-map — PR #7 review fixes (pill migrates across monitors)
+**Branch:** `feat/overlay-numbered-map`
+**Components:** `src/renderer/overlay/index.html`
+
+Three follow-ups from the PR #7 review:
+
+- **Caption pill now migrates across monitors.** Previously the pill anchored on
+  the cursor's display at reveal time and froze there — moving the mouse to
+  another monitor left it stranded. A new per-window `capOwner` flag tracks which
+  display currently shows the pill; in the `overlay:companion-anchor` handler, the
+  display the cursor moves *onto* takes over the pill (jumping straight to the
+  fully-revealed text so it stays in sync with the voice rather than replaying the
+  typewriter), and the display it leaves hides and releases it (dropping its anchor
+  so a later delta can't re-show a hidden pill). Only active while following (the
+  tray toggle); pinned mode never migrates. `maybeFinish` now gates the
+  "don't fade mid-type" wait on `capOwner` (not `capAnchor`), and `fadeAll` clears
+  `capActive`/`capOwner` up front so a mouse move into another display can't
+  re-acquire a pill that's already fading.
+- **TTS-on hang backstop padded.** The estimate-based `fallbackTimer` is now padded
+  by `VOICE_HANG_PAD` (10 s) when TTS is on, so it acts purely as a backstop for a
+  dropped `companion:speaking-ended` and can never preempt speech that started late;
+  with TTS off it remains the tight estimate that drives the absorb hold.
+- **Dropped dead `voiceStarted` state** — it was set and reset but never read
+  (`revealStarted` already guards `beginReveal`).
+
 ### feat/overlay-numbered-map — caption pill follows the cursor (tray toggle)
 **Branch:** `feat/overlay-numbered-map`
 **Components:** `src/main/settings.ts`, `src/main/tray.ts`, `src/main/index.ts`,
