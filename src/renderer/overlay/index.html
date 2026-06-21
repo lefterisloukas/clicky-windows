@@ -14,56 +14,10 @@
       -webkit-app-region: no-drag;
     }
 
-    #cursor {
-      position: absolute;
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      background: rgba(59, 130, 246, 0.95);
-      box-shadow: 0 0 30px rgba(59, 130, 246, 0.9), 0 0 60px rgba(59, 130, 246, 0.6), 0 0 0 4px rgba(255, 255, 255, 0.9);
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      opacity: 0;
-      transition: left 0.4s ease-out, top 0.4s ease-out, opacity 0.3s ease;
-      z-index: 9999;
-    }
-
-    #cursor.visible {
-      opacity: 1;
-    }
-
-    #cursor::after {
-      content: '';
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      background: rgba(59, 130, 246, 0.4);
-      animation: pulse 1.5s ease-in-out infinite;
-    }
-
-    #label {
-      position: absolute;
-      transform: translate(-50%, 20px);
-      background: rgba(0, 0, 0, 0.8);
-      color: white;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-family: -apple-system, 'Segoe UI', sans-serif;
-      font-size: 13px;
-      white-space: nowrap;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-    }
-
-    #label.visible {
-      opacity: 1;
-    }
-
-    /* Response caption — the streaming "Companion Pill". Separate from #label
-       (which carries the per-point element name): this anchors ONCE per reply
-       and streams the model's full answer letter-by-letter near the cursor. */
+    /* Response caption — the streaming "Companion Pill". One block, anchored
+       ONCE per reply at the user's cursor, streaming the model's full answer
+       letter-by-letter. It never relocates or re-segments while the voice plays
+       (that decoupling is what keeps text and speech from desyncing). */
     #response {
       position: absolute;
       max-width: 260px;
@@ -94,7 +48,7 @@
     }
 
     /* Tail — a rotated square pointing back toward the anchor. The side it sits
-       on flips with placement via the data-tail attribute. */
+       on flips with placement via the data-tail / data-tailx attributes. */
     #response::before {
       content: '';
       position: absolute;
@@ -110,28 +64,6 @@
     #response[data-tailx="right"][data-tail="top"]::before    { right: 16px; left: auto; transform: rotate(45deg) scaleX(-1); }
     #response[data-tailx="right"][data-tail="bottom"]::before { right: 16px; left: auto; transform: rotate(225deg) scaleX(-1); }
 
-    /* Unified card: the pointed element's name as a small header above the
-       reply, so it doesn't collide with the floating per-point label. */
-    #response .cap-header {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      font-weight: 650;
-      letter-spacing: 0.02em;
-      color: #22D3EE;
-      margin-bottom: 6px;
-      padding-bottom: 6px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    }
-    #response .cap-hdot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #3B82F6;
-      box-shadow: 0 0 8px #3B82F6;
-      flex: none;
-    }
     #response .cap-body { display: inline; }
 
     #response .cap-caret {
@@ -153,9 +85,10 @@
       #response .cap-caret { animation: none; }
     }
 
-    /* Numbered-map badges — one persistent numbered marker per point. The whole
-       route stays on screen as a map; exactly one badge is `.active` (glowing)
-       at a time, and covered steps become a dimmed `.done` trail. */
+    /* Numbered constellation — one persistent badge per point. All badges show
+       together (a quick cascade entrance, NOT a voice-paced walk); a single
+       pointer is a plain dot, two or more are numbered. Each carries a short
+       label chip. They linger past the voice, then fade together with the pill. */
     #badges {
       position: absolute;
       inset: 0;
@@ -164,56 +97,58 @@
     }
     .badge {
       position: absolute;
-      min-width: 26px;
-      height: 26px;
-      padding: 0 7px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      border-radius: 13px;
       font-family: -apple-system, 'Segoe UI', sans-serif;
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 700;
-      color: #04121C;
-      background: #5C6B82;
-      border: 2px solid rgba(255, 255, 255, 0.55);
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
-      opacity: 0.5;
-      transform: translate(-50%, -50%) scale(1);
+      color: #fff;
+      background: rgba(59, 130, 246, 0.96);
+      box-shadow: 0 0 22px rgba(59, 130, 246, 0.85), 0 0 0 3px rgba(255, 255, 255, 0.9);
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.4);
       transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.2, 1.3, 0.4, 1),
-                  left 0.4s ease-out, top 0.4s ease-out,
-                  background 0.3s ease, box-shadow 0.3s ease, color 0.3s ease;
+                  left 0.4s ease-out, top 0.4s ease-out;
     }
-    .badge.active {
-      opacity: 1;
-      transform: translate(-50%, -50%) scale(1.12);
-      background: linear-gradient(135deg, #3B82F6, #22D3EE);
-      box-shadow: 0 0 18px rgba(34, 211, 238, 0.9), 0 0 0 3px rgba(255, 255, 255, 0.85);
-    }
-    .badge.active::after {
+    .badge.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    .badge::after {
       content: '';
       position: absolute;
-      inset: -2px;
-      border-radius: inherit;
-      background: rgba(34, 211, 238, 0.4);
-      animation: pulse 1.5s ease-in-out infinite;
+      inset: 0;
+      border-radius: 50%;
+      background: rgba(59, 130, 246, 0.4);
+      animation: pulse 1.6s ease-in-out infinite;
       z-index: -1;
     }
-    .badge.done {
-      opacity: 0.62;
-      transform: translate(-50%, -50%) scale(1);
-      background: #2D6A4F;
-      color: #DFF7EC;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+
+    .chip {
+      position: absolute;
+      transform: translate(-50%, 16px);
+      background: rgba(0, 0, 0, 0.82);
+      color: #fff;
+      font-family: -apple-system, 'Segoe UI', sans-serif;
+      font-size: 12px;
+      padding: 3px 9px;
+      border-radius: 6px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease, left 0.4s ease-out, top 0.4s ease-out;
+      z-index: 9995;
     }
+    .chip.show { opacity: 1; }
 
     @media (prefers-reduced-motion: reduce) {
       .badge {
-        transition: opacity 0.3s ease, left 0.4s ease-out, top 0.4s ease-out,
-                    background 0.3s ease, color 0.3s ease;
+        transition: opacity 0.3s ease, left 0.4s ease-out, top 0.4s ease-out;
+        transform: translate(-50%, -50%) scale(1);
       }
-      .badge.active { transform: translate(-50%, -50%) scale(1); }
-      .badge.active::after { animation: none; }
+      .badge.show { transform: translate(-50%, -50%) scale(1); }
+      .badge::after { animation: none; }
     }
 
     @keyframes pulse {
@@ -227,7 +162,6 @@
       position: absolute;
       width: 14px;
       height: 14px;
-      /* offset so the spark sits below-right of the cursor tip */
       transform: translate(8px, 8px);
       pointer-events: none;
       z-index: 9998;
@@ -253,8 +187,7 @@
       #cursor-buddy { animation: none; transform: translate(8px, 8px); }
     }
 
-    /* Cursor companion — bare animation anchored bottom-right of cursor tip.
-       No background, no border, no text — just the motion. */
+    /* Cursor companion — bare animation anchored bottom-right of cursor tip. */
     #companion {
       --c: #22D3EE;
       position: absolute;
@@ -263,7 +196,6 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      /* sit 14 px right and 14 px below the cursor tip */
       transform: translate(14px, 14px);
       pointer-events: none;
       opacity: 0;
@@ -300,7 +232,7 @@
       50%       { height: var(--bh); }
     }
 
-    /* Thinking: conic-gradient ring spinner (unchanged from previous design) */
+    /* Thinking: conic-gradient ring spinner */
     #companion .mini-spin {
       display: none;
       width: 16px;
@@ -337,8 +269,6 @@
     <path d="M7 0 L8.2 5.8 L14 7 L8.2 8.2 L7 14 L5.8 8.2 L0 7 L5.8 5.8 Z"
           fill="url(#spark-grad)"/>
   </svg>
-  <div id="cursor"></div>
-  <div id="label"></div>
   <div id="badges"></div>
   <div id="response"></div>
 
@@ -354,141 +284,31 @@
   </div>
 
   <script>
-    const cursor = document.getElementById('cursor');
-    const label = document.getElementById('label');
-
     console.log('[Clicky overlay] script loaded, window.clicky =', !!window.clicky);
 
-    // Handle point-at animations.
-    //
-    // Points now stream in one at a time as the model generates, rather than
-    // arriving as a single batch. We keep a queue keyed by id and walk through
-    // them sequentially (each shown for a minimum dwell) so multi-step
-    // instructions still read as "step 1 → step 2". A `kind:"refine"` message
-    // carries sharper coordinates for an already-seen id and updates it in
-    // place (the CSS left/top transition animates the nudge). `kind:"reset"`
-    // clears everything at the start of a new query.
-    if (window.clicky && window.clicky.onPoint) {
-      const MIN_DWELL = 2000;   // ms each point stays before advancing
-      const HIDE_AFTER = 3000;  // ms after the last point before hiding
-
-      const points = new Map();  // id -> { x, y, label, shown }
-      const order = [];          // ids in arrival order
-      let activeId = null;
-      let dwellTimer = null;
-      let hideTimer = null;
-
-      function renderPoint(pt) {
-        cursor.style.left = pt.x + 'px';
-        cursor.style.top = pt.y + 'px';
-        cursor.classList.add('visible');
-        // The response caption folds the anchor point's name into its own
-        // header — suppress the floating label there so the two don't overlap.
-        // Every other point keeps its label exactly as before.
-        const isCaptionAnchor =
-          capEnabled && capActive && capAnchorId != null && activeId === capAnchorId;
-        if (isCaptionAnchor) {
-          label.classList.remove('visible');
-          return;
-        }
-        label.style.left = pt.x + 'px';
-        label.style.top = pt.y + 'px';
-        label.textContent = pt.label || '';
-        label.classList.add('visible');
-      }
-
-      function scheduleHide() {
-        if (hideTimer) clearTimeout(hideTimer);
-        hideTimer = setTimeout(() => {
-          cursor.classList.remove('visible');
-          label.classList.remove('visible');
-        }, HIDE_AFTER);
-      }
-
-      function advance() {
-        const nextId = order.find((id) => points.has(id) && !points.get(id).shown);
-        if (nextId == null) {
-          activeId = null;
-          scheduleHide();
-          return;
-        }
-        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
-        activeId = nextId;
-        const pt = points.get(nextId);
-        pt.shown = true;
-        renderPoint(pt);
-        dwellTimer = setTimeout(() => { activeId = null; advance(); }, MIN_DWELL);
-      }
-
-      function reset() {
-        if (dwellTimer) { clearTimeout(dwellTimer); dwellTimer = null; }
-        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
-        points.clear();
-        order.length = 0;
-        activeId = null;
-        cursor.classList.remove('visible');
-        label.classList.remove('visible');
-      }
-
-      window.clicky.onPoint((p) => {
-        console.log('[Clicky overlay] onPoint', JSON.stringify(p));
-        if (!p || p.kind === 'reset') { reset(); captionReset(); return; }
-
-        // Numbered-map mode owns the whole point lifecycle (badges + per-point
-        // pill); the legacy walking dot below never runs.
-        if (mapEnabled) { mapOnPoint(p); return; }
-
-        if (p.kind === 'refine') {
-          const ex = points.get(p.id);
-          if (ex) {
-            ex.x = p.x; ex.y = p.y;
-            if (typeof p.label === 'string') ex.label = p.label;
-            if (activeId === p.id) renderPoint(ex);  // animate the correction
-          }
-          captionRefinePoint(p);  // ride the refinement if it's the caption anchor
-          return;
-        }
-
-        // kind === 'raw' (or legacy/no kind) — enqueue a new point.
-        if (!points.has(p.id)) order.push(p.id);
-        points.set(p.id, { x: p.x, y: p.y, label: p.label, shown: false });
-        if (activeId === null) advance();
-        captionRawPoint(p);  // the first raw point anchors the response caption
-      });
-    } else {
-      console.error('[Clicky overlay] window.clicky.onPoint is not available!');
-    }
-
-    // Handle cursor buddy tracking
+    // ---- Cursor buddy tracking ----
     const cursorBuddy = document.getElementById('cursor-buddy');
-
-    window.clicky.onCursorBuddy((x, y) => {
-      cursorBuddy.style.left = x + 'px';
-      cursorBuddy.style.top = y + 'px';
-      if (!cursorBuddy.classList.contains('visible')) {
-        cursorBuddy.classList.add('visible');
-      }
-    });
-
-    window.clicky.onCursorBuddyVisible((visible) => {
-      if (visible) {
-        cursorBuddy.classList.add('visible');
-      } else {
-        cursorBuddy.classList.remove('visible');
-      }
-    });
+    if (window.clicky && window.clicky.onCursorBuddy) {
+      window.clicky.onCursorBuddy((x, y) => {
+        cursorBuddy.style.left = x + 'px';
+        cursorBuddy.style.top = y + 'px';
+        if (!cursorBuddy.classList.contains('visible')) cursorBuddy.classList.add('visible');
+      });
+    }
+    if (window.clicky && window.clicky.onCursorBuddyVisible) {
+      window.clicky.onCursorBuddyVisible((visible) => {
+        cursorBuddy.classList.toggle('visible', !!visible);
+      });
+    }
 
     // ---- Cursor companion: listening (eq bars) + thinking (conic spinner) ----
     const companion = document.getElementById('companion');
-
     let companionState = 'idle';            // 'idle' | 'listening' | 'thinking'
-    const anchor = { active: false, x: 0, y: 0 };
+    const anchor = { active: false, x: 0, y: 0 };   // live cursor pos on this display
 
     function updateCompanion() {
       const show = companionState !== 'idle' && anchor.active;
-      if (companionState !== 'idle') {
-        companion.dataset.state = companionState;
-      }
+      if (companionState !== 'idle') companion.dataset.state = companionState;
       companion.classList.toggle('visible', show);
     }
 
@@ -507,66 +327,57 @@
       console.error('[Clicky overlay] window.clicky.onCompanionAnchor is not available!');
     }
 
-    // recording -> listening
     if (window.clicky && window.clicky.onRecordingChanged) {
       window.clicky.onRecordingChanged((isRecording) => {
-        if (isRecording) {
-          companionState = 'listening';
-        } else if (companionState === 'listening') {
-          companionState = 'idle';
-        }
+        if (isRecording) companionState = 'listening';
+        else if (companionState === 'listening') companionState = 'idle';
         updateCompanion();
       });
     }
-
-    // processing stages -> thinking
     if (window.clicky && window.clicky.onStage) {
       window.clicky.onStage(({ stage }) => {
-        if (stage === 'speaking' || stage === 'done') {
-          companionState = 'idle';
-        } else {
-          companionState = 'thinking';
-        }
+        companionState = (stage === 'speaking' || stage === 'done') ? 'idle' : 'thinking';
         updateCompanion();
       });
     }
-
-    // Escape during recording -> cancel
     if (window.clicky && window.clicky.onRecordingCancelled) {
-      window.clicky.onRecordingCancelled(() => {
-        companionState = 'idle';
-        updateCompanion();
-      });
+      window.clicky.onRecordingCancelled(() => { companionState = 'idle'; updateCompanion(); });
     }
 
     // ====================================================================
-    // Response caption — the streaming "Companion Pill".
+    // Companion pill + numbered constellation.
     //
-    // The model's full reply is broadcast to every window via the
-    // chat:stream-* IPC (see CompanionManager.notifyAll); the overlay listens
-    // to the same stream the chat window does and renders it as a pill near
-    // the cursor. The reply anchors ONCE per query — to the first POINT tag,
-    // or (if the answer points at nothing) near the real mouse cursor. The
-    // per-point #label keeps hopping with the dot independently of this.
-    //
-    // A "catch-up typewriter" decouples bursty network deltas from a smooth,
-    // steady letter-by-letter reveal that roughly tracks generation/TTS pace.
+    // One unified flow for all three cases (no pointer / one / multiple):
+    //   - The caption is the FULL reply, anchored ONCE at the cursor, typed out
+    //     in place. It never moves or re-segments while the voice plays.
+    //   - Each point gets a badge: a plain dot when there's a single pointer,
+    //     a numbered dot when there are two or more (the global count comes from
+    //     the main process via overlay:point-count, since each window only sees
+    //     its own display's points). Badges cascade in (quick entrance) and each
+    //     carries a short label chip.
+    //   - Reveal (caption typing + cascade) is gated on the voice starting
+    //     (companion:speaking-started); with TTS off it begins promptly. After
+    //     the voice ends (or a word-count estimate when TTS is off) everything
+    //     holds for an absorb buffer — 5s for ≥2 points, else 1.5s — then the
+    //     pill and all badges fade together.
     // ====================================================================
     const responseEl = document.getElementById('response');
+    const badgesEl = document.getElementById('badges');
     const capReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    const CAP_CHAR_INTERVAL = 70;   // ms per character (~14 cps, reading pace)
-    const CAP_GRACE = 400;          // ms to wait for a point before cursor-anchoring
-    const CAP_LINGER = 1500;        // ms the pill stays after the voice ends
-    const CAP_MS_PER_WORD = 390;    // ~155 wpm — speech-duration estimate (TTS-off)
+    const CAP_CHAR_INTERVAL = 70;    // ms per character (~14 cps, reading pace)
+    const CAP_MS_PER_WORD = 390;     // ~155 wpm — speech-duration estimate (TTS-off)
     const CAP_OFFSET_X = 14;
-    const CAP_OFFSET_Y = 26;        // below #label's +20 so the two don't collide
+    const CAP_OFFSET_Y = 26;
+    const HOLD_MULTI = 5000;         // absorb buffer after voice, ≥2 points
+    const HOLD_SINGLE = 1500;        // absorb buffer after voice, 0–1 points
+    const REVEAL_BACKSTOP = 4000;    // ms to start reveal if no voice signal arrives
+    const BADGE_STAGGER = 500;       // ms between cascade reveals
+    const FADE_MS = 360;             // pill/badge fade-out before DOM clear
 
     // POINT-tag stripping — kept in sync with chat/index.html (source of truth).
-    // Removes complete [POINT:…] tags and hides any trailing, not-yet-closed tag
-    // so a half-streamed tag never flashes on screen.
     const CAP_POINT_RE = /\[POINT:[^\]]+\]/g;
-    function capStripPointTags(text) {
+    function stripPointTags(text) {
       const withoutComplete = text.replace(CAP_POINT_RE, '');
       const trailingOpen = withoutComplete.match(/\[[^\]]*$/);
       if (trailingOpen && /\[POINT:/i.test(trailingOpen[0])) {
@@ -575,63 +386,43 @@
       return withoutComplete;
     }
 
-    let capEnabled = true;          // cached setting; refreshed each stream-start
-    let mapEnabled = true;          // numbered-map choreography (vs walking dot)
+    // ---- settings (cached; refreshed each stream-start) ----
+    let capEnabled = true;          // show the pill text at all
+    let ttsOn = true;               // is TTS enabled? gates whether we wait for voice
+
+    // ---- caption state ----
     let capActive = false;          // a reply is currently streaming/showing
     let capRaw = '';                // accumulated raw delta text (POINT tags intact)
     let capTarget = '';             // stripped text we want revealed
     let capShown = 0;               // chars revealed so far
     let capAnchor = null;           // {x,y} once decided (display-local px)
-    let capAnchorId = null;         // point id we anchored to (for refine follow)
-    let capHeader = '';             // anchor element name → pill header (unified card)
-    let capPointSeen = false;
     let capEnded = false;           // stream-end received
-    let capVoiceEnded = false;      // companion:speaking-ended received
+    let capVoiceEnded = false;      // voice finished (real signal or estimate)
     let capTypeTimer = null;
-    let capGraceTimer = null;
-    let capHideTimer = null;
-    let capFallbackTimer = null;    // hide backstop when no voice signal arrives
-    let capBodyEl = null;           // the streaming-text span inside the pill
+    let capBodyEl = null;
 
-    function captionClearTimers() {
-      if (capTypeTimer) { clearInterval(capTypeTimer); capTypeTimer = null; }
-      if (capGraceTimer) { clearTimeout(capGraceTimer); capGraceTimer = null; }
-      if (capHideTimer) { clearTimeout(capHideTimer); capHideTimer = null; }
-      if (capFallbackTimer) { clearTimeout(capFallbackTimer); capFallbackTimer = null; }
-    }
+    // ---- lifecycle state ----
+    let revealStarted = false;      // reveal (caption + cascade) has begun
+    let voiceStarted = false;       // companion:speaking-started arrived
+    let finished = false;           // finishAll has been armed
+    let revealBackstop = null;      // start-reveal backstop timer
+    let fallbackTimer = null;       // TTS-off "voice done" estimate timer
+    let hideTimer = null;           // absorb-buffer timer before fade
+    let token = 0;                  // bumped each query; guards delayed clears
 
-    function captionReset() {
-      captionClearTimers();
-      mapReset();
-      capActive = false;
-      capRaw = ''; capTarget = ''; capShown = 0;
-      capAnchor = null; capAnchorId = null; capHeader = '';
-      capPointSeen = false; capEnded = false; capVoiceEnded = false;
-      capBodyEl = null;
-      responseEl.classList.remove('visible');
-      responseEl.innerHTML = '';
-      responseEl.dataset.tail = 'top';
-      responseEl.dataset.tailx = 'left';
-    }
+    // ---- constellation state ----
+    const badges = new Map();       // id -> { id, index, x, y, label, el, chipEl }
+    const order = [];               // ids in arrival order
+    let globalCount = 0;            // total points across all displays (from main)
+    let scheduledUntil = 0;         // perf-time of the last scheduled cascade reveal
+    const staggerTimers = [];       // pending cascade setTimeouts (cleared on reset)
 
-    function captionRevealDone() {
-      return capShown >= capTarget.length;
-    }
+    // ---------- caption pill mechanics ----------
+    function captionRevealDone() { return capShown >= capTarget.length; }
 
-    // Build the pill's inner structure once: optional element-name header, then
-    // the streaming-text body. Rebuilt only after a reset (capBodyEl cleared).
     function captionEnsureDom() {
       if (capBodyEl) return;
       responseEl.innerHTML = '';
-      if (capHeader) {
-        const hdr = document.createElement('div');
-        hdr.className = 'cap-header';
-        const dot = document.createElement('span');
-        dot.className = 'cap-hdot';
-        hdr.appendChild(dot);
-        hdr.appendChild(document.createTextNode(capHeader));
-        responseEl.appendChild(hdr);
-      }
       capBodyEl = document.createElement('span');
       capBodyEl.className = 'cap-body';
       responseEl.appendChild(capBodyEl);
@@ -662,7 +453,7 @@
       if (x + w > vw - 8) {                  // overflow right -> flip left
         x = capAnchor.x - w - CAP_OFFSET_X;
         if (x < 8) x = Math.max(8, vw - w - 8);
-        tailx = 'right';                     // tail must mirror to point back
+        tailx = 'right';
       }
       if (y + h > vh - 8) {                  // overflow bottom -> flip above
         y = capAnchor.y - h - CAP_OFFSET_Y;
@@ -682,41 +473,12 @@
       }
     }
 
-    // Hide after `delay` ms, then clear the pill once its fade-out has run.
-    function captionHide(delay) {
-      if (capHideTimer) clearTimeout(capHideTimer);
-      capHideTimer = setTimeout(() => {
-        responseEl.classList.remove('visible');
-        capActive = false;
-        setTimeout(() => {
-          if (!responseEl.classList.contains('visible')) {
-            responseEl.innerHTML = '';
-            capBodyEl = null;
-            responseEl.dataset.tail = 'top';
-            responseEl.dataset.tailx = 'left';
-          }
-        }, 320);
-      }, delay);
-    }
-
-    // The reply has finished revealing AND the model has stopped streaming.
-    // Keep the pill up until the *voice* finishes (companion:speaking-ended),
-    // then linger briefly. A fallback timer (set at stream-end) covers the
-    // case where no voice plays (TTS off / errored) so it can't hang forever.
-    function captionMaybeFinish() {
-      if (mapOwnsPill) return;  // numbered-map mode runs its own finish/linger
-      if (capEnded && capVoiceEnded && captionRevealDone()) {
-        if (capFallbackTimer) { clearTimeout(capFallbackTimer); capFallbackTimer = null; }
-        captionHide(CAP_LINGER);
-      }
-    }
-
     function captionTick() {
       if (captionRevealDone()) {
         clearInterval(capTypeTimer); capTypeTimer = null;
         captionRender();
         captionPlace();                      // re-flip now that size has settled
-        captionMaybeFinish();
+        maybeFinish();
         return;
       }
       capShown++;
@@ -724,12 +486,12 @@
     }
 
     function captionStartTyping() {
-      if (!capAnchor) return;
+      if (!capAnchor || !capEnabled) return;
       if (capReduced) {                      // reveal instantly, no animation
         capShown = capTarget.length;
         captionRender();
         captionPlace();
-        captionMaybeFinish();
+        maybeFinish();
         return;
       }
       if (!capTypeTimer && capShown < capTarget.length) {
@@ -737,355 +499,231 @@
       }
     }
 
-    // Grace timer fired without a point — anchor to the live cursor instead,
-    // but only on the overlay whose display actually holds the cursor.
-    function captionAnchorFromCursor() {
-      capGraceTimer = null;
-      if (capAnchor || !capActive || !capEnabled) return;
-      if (!anchor || !anchor.active) return;  // cursor isn't on this display
-      capAnchor = { x: anchor.x, y: anchor.y };
-      if (capTarget) { captionShow(); captionStartTyping(); }
-    }
-
-    // The first raw POINT of the reply anchors the caption (anchors once) and
-    // folds that element's name into the pill header.
-    function captionRawPoint(p) {
-      if (!capEnabled) return;
-      capPointSeen = true;
-      if (capAnchor) return;                 // first point wins
-      if (capGraceTimer) { clearTimeout(capGraceTimer); capGraceTimer = null; }
-      capAnchor = { x: p.x, y: p.y };
-      capAnchorId = p.id;
-      capHeader = (p.label || '').trim();
-      // This point just became active via advance() — hide its floating label;
-      // its name now lives in the pill header.
-      if (capActive) label.classList.remove('visible');
-      if (capActive && capTarget) { captionShow(); captionStartTyping(); }
-    }
-
-    // If the anchor point is refined, nudge the pill to follow it.
-    function captionRefinePoint(p) {
-      if (capAnchorId && p && p.id === capAnchorId && typeof p.x === 'number') {
-        capAnchor = { x: p.x, y: p.y };
-        captionPlace();
-      }
-    }
-
-    // ====================================================================
-    // Numbered map — every point gets a persistent numbered badge; exactly one
-    // is active at a time and the shared #response pill rides it showing only
-    // that step's text. Steps advance sequentially: a step is held for a
-    // reading-time estimate (reveal time, words × CAP_MS_PER_WORD, clamped) so
-    // the next pointer never appears until the current one has been read.
-    //
-    // The pill is driven by setting the shared cap* state and calling the same
-    // low-level helpers the caption uses (captionRender/Place/Show/StartTyping);
-    // captionMaybeFinish early-returns while mapOwnsPill so only mapFinish hides.
-    // ====================================================================
-    const mapBadges = document.getElementById('badges');
-    const MAP_MIN_DWELL = 1400;     // ms a step stays even when its text is tiny
-    const MAP_MAX_DWELL = 9000;     // ms cap so one verbose step can't stall the walk
-    const MAP_CLEAR_AFTER = 10000;  // ms after the walk ends before the trail fades away
-    const MAP_FADE_MS = 400;        // badge fade-out duration before removal
-    const MAP_START_FALLBACK = 4000; // ms backstop to start the walk if no voice signal comes
-
-    const mapPoints = new Map();    // id -> { id, index, x, y, label, text, el, revealed }
-    const mapOrder = [];            // ids in arrival order
-    let mapActiveId = null;         // currently shown point (stays set while waiting)
-    let mapWaiting = false;         // revealed all arrived points; awaiting more / end
-    let mapStreamEnded = false;     // model finished streaming (no more points coming)
-    let mapOwnsPill = false;        // a point landed → map drives the pill, not the caption
-    let mapAdvanceTimer = null;     // dwell timer for the active step
-    let mapClearTimer = null;       // delay before the finished trail starts fading
-    let mapRemoveTimer = null;      // fade-out window before the badges are removed
-    let mapStarted = false;         // the first step has been revealed
-    let mapVoiceStarted = false;    // companion:speaking-started arrived for this query
-    let mapStartTimer = null;       // backstop timer for the first reveal
-    let mapTtsOn = true;            // cached: is TTS enabled? gates whether we wait for voice
-
-    function mapReset() {
-      if (mapAdvanceTimer) { clearTimeout(mapAdvanceTimer); mapAdvanceTimer = null; }
-      if (mapClearTimer) { clearTimeout(mapClearTimer); mapClearTimer = null; }
-      if (mapRemoveTimer) { clearTimeout(mapRemoveTimer); mapRemoveTimer = null; }
-      if (mapStartTimer) { clearTimeout(mapStartTimer); mapStartTimer = null; }
-      mapPoints.clear();
-      mapOrder.length = 0;
-      mapActiveId = null;
-      mapWaiting = false;
-      mapStreamEnded = false;
-      mapOwnsPill = false;
-      mapStarted = false;
-      mapVoiceStarted = false;
-      if (mapBadges) mapBadges.innerHTML = '';
-    }
-
-    // Begin the walk (reveal step 1). Gated so the first badge appears in sync
-    // with the voice: when TTS is on we wait for companion:speaking-started
-    // (with MAP_START_FALLBACK as a backstop); when it's off we start at once.
-    function startWalk() {
-      if (mapStarted) return;
-      if (mapStartTimer) { clearTimeout(mapStartTimer); mapStartTimer = null; }
-      mapStarted = true;
-      mapAdvance();
-    }
-
-    function mapMakeBadge(index) {
+    // ---------- constellation ----------
+    function makeBadge(p) {
       const el = document.createElement('div');
       el.className = 'badge';
-      el.textContent = index != null ? String(index) : '•';
-      return el;
-    }
-
-    // Point the shared pill at this step and stream its text. Skips the visible
-    // pill when captions are off (silent numbered trail), but still records the
-    // target so the dwell estimate has a length to work with.
-    function mapShowChunk(rec) {
-      if (capTypeTimer) { clearInterval(capTypeTimer); capTypeTimer = null; }
-      capHeader = (rec.label || '').trim();
-      capAnchor = { x: rec.x, y: rec.y };
-      capAnchorId = rec.id;
-      capTarget = (rec.text || '').trim();
-      capShown = 0;
-      capBodyEl = null;
-      responseEl.dataset.tail = 'top';
-      responseEl.dataset.tailx = 'left';
-      if (!capEnabled) return;       // captions off → badges only
-      captionRender();               // build header + body DOM
-      captionPlace();                // glide to the new badge (CSS animates left/top)
-      captionShow();                 // fade in (no-op once already visible)
-      captionStartTyping();          // typewriter (instant under reduced-motion)
-    }
-
-    // Hold the current step for its reading time, then advance.
-    function mapArmDwell() {
-      const words = capTarget ? capTarget.split(/\s+/).filter(Boolean).length : 0;
-      const revealMs = capTarget.length * CAP_CHAR_INTERVAL;
-      const dwellMs = Math.min(
-        MAP_MAX_DWELL,
-        Math.max(revealMs, words * CAP_MS_PER_WORD, MAP_MIN_DWELL)
-      );
-      if (mapAdvanceTimer) clearTimeout(mapAdvanceTimer);
-      mapAdvanceTimer = setTimeout(mapAdvance, dwellMs);
-    }
-
-    function mapAdvance() {
-      if (mapAdvanceTimer) { clearTimeout(mapAdvanceTimer); mapAdvanceTimer = null; }
-      const nextId = mapOrder.find((id) => {
-        const r = mapPoints.get(id);
-        return r && !r.revealed;
-      });
-      if (nextId == null) {
-        // Walked everything that has arrived. Finish only once the model is also
-        // done; otherwise wait — a later point will kick mapAdvance again.
-        if (mapStreamEnded) mapFinish();
-        else mapWaiting = true;
-        return;
-      }
-      mapWaiting = false;
-      // Demote the previous step to a dimmed "done" trail marker.
-      if (mapActiveId != null && mapActiveId !== nextId) {
-        const prev = mapPoints.get(mapActiveId);
-        if (prev && prev.el) { prev.el.classList.remove('active'); prev.el.classList.add('done'); }
-      }
-      mapActiveId = nextId;
-      const rec = mapPoints.get(nextId);
-      rec.revealed = true;
-      if (rec.el) { rec.el.classList.remove('done'); rec.el.classList.add('active'); }
-      mapShowChunk(rec);
-      mapArmDwell();
-    }
-
-    // No more steps and the model is done — let the last step linger, then fade
-    // the pill and mark the final badge done so the whole map reads complete.
-    // The badge trail then auto-clears after MAP_CLEAR_AFTER (a new query wipes
-    // it instantly via mapReset, cancelling both fade timers).
-    function mapFinish() {
-      if (mapActiveId != null) {
-        const rec = mapPoints.get(mapActiveId);
-        if (rec && rec.el) { rec.el.classList.remove('active'); rec.el.classList.add('done'); }
-      }
-      mapActiveId = null;
-      if (capEnabled) captionHide(CAP_LINGER);
-      mapClearBadgesSoon();
-    }
-
-    // Fade the finished badge trail away after a grace period. Two-phase so a new
-    // query's mapReset can cancel either the wait or the fade and never let a
-    // stale timer wipe the next answer's freshly-drawn badges.
-    function mapClearBadgesSoon() {
-      if (mapClearTimer) clearTimeout(mapClearTimer);
-      mapClearTimer = setTimeout(() => {
-        mapClearTimer = null;
-        for (const el of Array.from(mapBadges.children)) el.style.opacity = '0';
-        mapRemoveTimer = setTimeout(() => {
-          mapRemoveTimer = null;
-          mapBadges.innerHTML = '';
-          mapPoints.clear();
-          mapOrder.length = 0;
-          mapActiveId = null;
-        }, MAP_FADE_MS);
-      }, MAP_CLEAR_AFTER);
-    }
-
-    function mapOnPoint(p) {
-      if (!p) return;
-
-      if (p.kind === 'refine') {
-        const rec = mapPoints.get(p.id);
-        if (!rec) return;
-        if (typeof p.x === 'number') rec.x = p.x;
-        if (typeof p.y === 'number') rec.y = p.y;
-        if (typeof p.label === 'string') rec.label = p.label;
-        if (rec.el) { rec.el.style.left = rec.x + 'px'; rec.el.style.top = rec.y + 'px'; }
-        // If the active step is refined, ride the correction with the pill.
-        if (p.id === mapActiveId && capEnabled) {
-          capAnchor = { x: rec.x, y: rec.y };
-          captionPlace();
-        }
-        return;
-      }
-
-      // kind === 'raw' — a new step. Drop its badge immediately as part of the map.
-      capPointSeen = true;
-      mapOwnsPill = true;
-      if (capGraceTimer) { clearTimeout(capGraceTimer); capGraceTimer = null; }
-
-      const el = mapMakeBadge(p.index);
       el.style.left = p.x + 'px';
       el.style.top = p.y + 'px';
-      mapBadges.appendChild(el);
-      mapPoints.set(p.id, {
-        id: p.id, index: p.index, x: p.x, y: p.y,
-        label: p.label, text: p.text || '', el, revealed: false,
-      });
-      mapOrder.push(p.id);
+      const chipEl = document.createElement('div');
+      chipEl.className = 'chip';
+      chipEl.style.left = p.x + 'px';
+      chipEl.style.top = p.y + 'px';
+      chipEl.textContent = p.label || '';
+      badgesEl.appendChild(el);
+      badgesEl.appendChild(chipEl);
+      return { el, chipEl };
+    }
 
-      if (!mapStarted) {
-        // First step: align its reveal with the voice. Start now if speech has
-        // already begun or TTS is off; otherwise wait for speaking-started, with
-        // a backstop in case no voice signal ever arrives.
-        if (mapVoiceStarted || !mapTtsOn) {
-          startWalk();
-        } else if (mapStartTimer == null) {
-          mapStartTimer = setTimeout(startWalk, MAP_START_FALLBACK);
-        }
-      } else if (mapAdvanceTimer == null && (mapActiveId == null || mapWaiting)) {
-        // Walk already running: if it's idle (ran dry), this point resumes it;
-        // if a step is dwelling, the running timer picks this one up in turn.
-        mapAdvance();
+    // Plain dot for a single pointer; the global step number for two or more.
+    function applyNumbering() {
+      const numbered = globalCount >= 2;
+      for (const rec of badges.values()) {
+        rec.el.textContent = numbered && rec.index != null ? String(rec.index) : '';
       }
     }
 
-    function captionOnDelta(text) {
-      if (!capEnabled || !capActive) return;
-      if (mapEnabled && mapOwnsPill) return;  // a point landed; the map owns the pill
-      capRaw += text;
-      capTarget = capStripPointTags(capRaw).replace(/^\s+/, '');  // ltrim only
-      // Map mode: keep the text accumulating, but don't anchor mid-stream — a
-      // first point may still arrive (even after a sentence of preamble). The
-      // zero-point fallback is decided at stream-end, when !mapOwnsPill.
-      if (mapEnabled) return;
-      if (capAnchor) {
+    function revealBadge(rec) {
+      rec.el.classList.add('show');
+      if (rec.label) rec.chipEl.classList.add('show');
+    }
+
+    // Reveal-on-arrival with a minimum gap → a quick cascade for batched
+    // arrivals, just-in-time for trickled ones. Never a slow per-step walk.
+    function scheduleReveal(rec) {
+      if (capReduced) { revealBadge(rec); return; }
+      const now = performance.now();
+      const at = Math.max(now, scheduledUntil + BADGE_STAGGER);
+      scheduledUntil = at;
+      staggerTimers.push(setTimeout(() => revealBadge(rec), at - now));
+    }
+
+    // Begin the reveal once (guarded): anchor the caption at the cursor and
+    // start typing, then cascade any badges already queued. Triggered by voice
+    // start, the TTS-off path, the backstop, or (last chance) stream-end.
+    function beginReveal() {
+      if (revealStarted) return;
+      revealStarted = true;
+      if (revealBackstop) { clearTimeout(revealBackstop); revealBackstop = null; }
+      if (capEnabled && !capAnchor && anchor.active) {
+        capAnchor = { x: anchor.x, y: anchor.y };  // anchor once; don't chase the mouse
         captionShow();
         captionStartTyping();
-      } else if (!capGraceTimer && !capPointSeen) {
-        capGraceTimer = setTimeout(captionAnchorFromCursor, CAP_GRACE);
       }
+      scheduledUntil = 0;
+      for (const id of order) {
+        const rec = badges.get(id);
+        if (rec) scheduleReveal(rec);
+      }
+    }
+
+    function onRawPoint(p) {
+      if (badges.has(p.id)) return;
+      const { el, chipEl } = makeBadge(p);
+      const rec = { id: p.id, index: p.index, x: p.x, y: p.y, label: p.label, el, chipEl };
+      badges.set(p.id, rec);
+      order.push(p.id);
+      applyNumbering();
+      if (revealStarted) scheduleReveal(rec);
+    }
+
+    function onRefinePoint(p) {
+      const rec = badges.get(p.id);
+      if (!rec) return;
+      if (typeof p.x === 'number') { rec.x = p.x; rec.el.style.left = p.x + 'px'; rec.chipEl.style.left = p.x + 'px'; }
+      if (typeof p.y === 'number') { rec.y = p.y; rec.el.style.top = p.y + 'px'; rec.chipEl.style.top = p.y + 'px'; }
+      if (typeof p.label === 'string') { rec.label = p.label; rec.chipEl.textContent = p.label; }
+    }
+
+    // ---------- finish / fade ----------
+    function maybeFinish() {
+      if (finished || !capEnded || !capVoiceEnded) return;
+      // If the pill is showing, wait for it to finish typing so a fast voice
+      // can't fade the text mid-reveal. (No pill on this window → don't wait.)
+      if (capEnabled && capAnchor && !captionRevealDone()) return;
+      finished = true;
+      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+      const holdMs = globalCount >= 2 ? HOLD_MULTI : HOLD_SINGLE;
+      hideTimer = setTimeout(fadeAll, holdMs);
+    }
+
+    function fadeAll() {
+      const myToken = token;
+      responseEl.classList.remove('visible');
+      for (const rec of badges.values()) {
+        rec.el.classList.remove('show');
+        rec.chipEl.classList.remove('show');
+      }
+      setTimeout(() => {
+        if (token !== myToken) return;   // a new query started — don't wipe it
+        responseEl.innerHTML = '';
+        responseEl.dataset.tail = 'top';
+        responseEl.dataset.tailx = 'left';
+        capBodyEl = null;
+        badgesEl.innerHTML = '';
+        badges.clear();
+        order.length = 0;
+        capActive = false;
+      }, FADE_MS);
+    }
+
+    function resetAll() {
+      token++;
+      for (const t of staggerTimers) clearTimeout(t);
+      staggerTimers.length = 0;
+      if (capTypeTimer) { clearInterval(capTypeTimer); capTypeTimer = null; }
+      if (revealBackstop) { clearTimeout(revealBackstop); revealBackstop = null; }
+      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      capActive = false;
+      capRaw = ''; capTarget = ''; capShown = 0; capAnchor = null;
+      capEnded = false; capVoiceEnded = false; capBodyEl = null;
+      revealStarted = false; voiceStarted = false; finished = false;
+      globalCount = 0; scheduledUntil = 0;
+      badges.clear(); order.length = 0;
+      badgesEl.innerHTML = '';
+      responseEl.classList.remove('visible');
+      responseEl.innerHTML = '';
+      responseEl.dataset.tail = 'top';
+      responseEl.dataset.tailx = 'left';
+    }
+
+    // ---------- IPC wiring ----------
+    if (window.clicky && window.clicky.onPoint) {
+      window.clicky.onPoint((p) => {
+        if (!p || p.kind === 'reset') { resetAll(); return; }
+        if (p.kind === 'refine') { onRefinePoint(p); return; }
+        onRawPoint(p);
+      });
+    } else {
+      console.error('[Clicky overlay] window.clicky.onPoint is not available!');
+    }
+
+    if (window.clicky && window.clicky.onPointCount) {
+      window.clicky.onPointCount((count) => {
+        if (typeof count === 'number') globalCount = count;
+        applyNumbering();
+      });
     }
 
     if (window.clicky && window.clicky.onStreamStart) {
       window.clicky.onStreamStart(() => {
-        captionReset();
+        resetAll();
         capActive = true;
-        // Refresh both toggles for this query. Cached values gate synchronously;
-        // an IPC round-trip (faster than the first network delta) corrects them.
+        // Backstop: start the reveal even if no voice signal ever arrives
+        // (TTS error, or the 0-point case where no point handler runs).
+        revealBackstop = setTimeout(beginReveal, REVEAL_BACKSTOP);
         if (window.clicky.getSettings) {
           window.clicky.getSettings().then((s) => {
             capEnabled = s ? s.overlayCaptionEnabled !== false : true;
-            mapEnabled = s ? s.overlayNumberedMap !== false : true;
-            mapTtsOn = s ? s.ttsEnabled !== false : true;
-            // Captions off: hide only the pill — never wipe the numbered map.
+            ttsOn = s ? s.ttsEnabled !== false : true;
             if (!capEnabled) responseEl.classList.remove('visible');
+            if (!ttsOn && !revealStarted) beginReveal();  // no voice to wait for
           }).catch(() => {});
         }
       });
     }
 
     if (window.clicky && window.clicky.onStreamDelta) {
-      window.clicky.onStreamDelta(({ text }) => { if (text) captionOnDelta(text); });
+      window.clicky.onStreamDelta(({ text }) => {
+        if (!text || !capActive || !capEnabled) return;
+        capRaw += text;
+        capTarget = stripPointTags(capRaw).replace(/^\s+/, '');  // ltrim only
+        if (revealStarted && capAnchor) { captionShow(); captionStartTyping(); }
+      });
     }
 
     if (window.clicky && window.clicky.onStreamEnd) {
       window.clicky.onStreamEnd(({ text, error }) => {
         if (!capActive) return;
-
-        // Numbered-map mode: the model is done, so no more points are coming.
-        // Mark it so the walk can finish/linger once it reaches the last step.
-        // If the walk is idle right now (not mid-dwell), kick it to finish.
-        if (mapEnabled && mapOwnsPill) {
-          if (error) return;          // keep the badges; the next query resets them
-          mapStreamEnded = true;
-          if (mapAdvanceTimer == null) mapAdvance();
-          return;
-        }
-
-        if (error || !capEnabled) { captionReset(); return; }
+        if (error) { resetAll(); return; }
         capEnded = true;
         if (typeof text === 'string' && text) {
           capRaw = text;
-          capTarget = capStripPointTags(text).trim();
+          capTarget = stripPointTags(text).trim();
         }
-        if (!capAnchor) {                    // last chance: try the cursor
-          if (capGraceTimer) { clearTimeout(capGraceTimer); capGraceTimer = null; }
-          captionAnchorFromCursor();
-          if (!capAnchor) { captionReset(); return; }
-        }
-        captionShow();
-        captionStartTyping();
+        if (!revealStarted) beginReveal();             // last chance to anchor
+        if (capEnabled && capAnchor) { captionShow(); captionStartTyping(); }
 
-        // Hold the pill for the voice (companion:speaking-ended). If no voice
-        // plays (TTS off / errored), nothing would ever hide it — so arm a
-        // fallback from the estimated speech duration. The real signal, when it
-        // comes, clears this and hides on its own (shorter) linger.
+        // TTS-off / no-voice path: treat "voice done" as the estimated speech
+        // duration so the absorb hold still runs. The real speaking-ended
+        // signal, if it comes, fires maybeFinish first and clears this.
         const words = capTarget.trim() ? capTarget.trim().split(/\s+/).length : 0;
         const estSpeechMs = words * CAP_MS_PER_WORD;
-        const revealRemainingMs =
-          Math.max(0, capTarget.length - capShown) * CAP_CHAR_INTERVAL;
-        const fallbackMs = Math.max(revealRemainingMs, estSpeechMs) + CAP_LINGER;
-        if (capFallbackTimer) clearTimeout(capFallbackTimer);
-        capFallbackTimer = setTimeout(() => { capFallbackTimer = null; captionHide(0); }, fallbackMs);
+        const revealRemainingMs = Math.max(0, capTarget.length - capShown) * CAP_CHAR_INTERVAL;
+        if (fallbackTimer) clearTimeout(fallbackTimer);
+        fallbackTimer = setTimeout(() => {
+          fallbackTimer = null;
+          capVoiceEnded = true;
+          maybeFinish();
+        }, Math.max(revealRemainingMs, estSpeechMs));
 
-        captionMaybeFinish();  // voice may have already ended (very short reply)
+        maybeFinish();  // very short reply: voice may have already ended
       });
     }
 
-    // Voice started for this query — release the numbered map's first step so it
-    // appears in sync with speech instead of racing ahead while TTS spins up.
     if (window.clicky && window.clicky.onSpeakingStarted) {
       window.clicky.onSpeakingStarted(() => {
-        if (!capActive) return;  // stale event from a prior query
-        mapVoiceStarted = true;
-        if (mapEnabled && mapOwnsPill && !mapStarted) startWalk();
+        if (!capActive) return;            // stale event from a prior query
+        voiceStarted = true;
+        if (!revealStarted) beginReveal();
       });
     }
 
-    // Voice finished for this query — now the pill can fade. Authoritative when
-    // TTS is on; preempts the estimate fallback above.
     if (window.clicky && window.clicky.onSpeakingEnded) {
       window.clicky.onSpeakingEnded(() => {
-        if (!capActive || !capEnabled) return;  // stale event from a prior query
+        if (!capActive) return;            // stale event from a prior query
         capVoiceEnded = true;
-        captionMaybeFinish();
+        maybeFinish();
       });
     }
 
-    // Prime the cached toggle values at load.
+    // Prime the cached settings at load.
     if (window.clicky && window.clicky.getSettings) {
       window.clicky.getSettings()
         .then((s) => {
           capEnabled = s ? s.overlayCaptionEnabled !== false : true;
-          mapEnabled = s ? s.overlayNumberedMap !== false : true;
-          mapTtsOn = s ? s.ttsEnabled !== false : true;
+          ttsOn = s ? s.ttsEnabled !== false : true;
         })
         .catch(() => {});
     }

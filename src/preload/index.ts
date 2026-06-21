@@ -22,7 +22,6 @@ contextBridge.exposeInMainWorld("clicky", {
     callback: (point: {
       id?: string;
       index?: number;
-      text?: string;
       x?: number;
       y?: number;
       label?: string;
@@ -31,6 +30,14 @@ contextBridge.exposeInMainWorld("clicky", {
   ) => {
     ipcRenderer.on("overlay:point", (_event, point) => {
       callback(point);
+    });
+  },
+
+  // Running global point count for a query — lets each overlay window decide
+  // plain-dot (1 point) vs numbered (2+) without knowing other displays' points.
+  onPointCount: (callback: (count: number) => void) => {
+    ipcRenderer.on("overlay:point-count", (_event, data) => {
+      callback(data && typeof data.count === "number" ? data.count : 0);
     });
   },
 

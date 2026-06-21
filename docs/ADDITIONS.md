@@ -8,7 +8,58 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-21
 
-### feat/overlay-numbered-map — sync the first step with the voice
+### feat/overlay-numbered-map — lock the "cursor pill + numbered constellation" behavior
+**Branch:** `feat/overlay-numbered-map`
+**Components:** `src/renderer/overlay/index.html`, `src/services/incremental.ts`,
+`src/services/prompt.ts`, `src/main/companion.ts`, `src/preload/index.ts`,
+`src/main/settings.ts`, `src/renderer/settings/index.html`
+
+Replaces the numbered-map **walk** (badges advancing one-at-a-time on a
+reading-time dwell, the pill riding the active badge with per-point text). In
+practice the caption reveal and the voice never stayed in sync — text streamed at
+pill 3 while the voice was on pill 1 — because there is no reliable per-sentence
+voice timing. After product exploration we locked a simpler, sync-proof behavior
+and **removed the now-dead machinery**.
+
+**Hard rule:** the caption is ONE block in ONE place (anchored once at the cursor,
+full reply, never relocates/re-segments); pointers all appear together; the only
+timed events are reveal (voice-start) and fade (voice-end + hold).
+
+**Locked behavior**
+- **No pointer:** full reply in a pill at the cursor.
+- **One pointer:** plain dot + short label chip on the element, + the cursor pill.
+- **Multiple:** numbered dots (each with a label chip) that **cascade in** (~500 ms
+  apart — a quick entrance, not a voice-paced walk), + the cursor pill.
+- **Shared:** reveal gated on `companion:speaking-started` (TTS off begins promptly,
+  with a 4 s backstop for the 0-point / voice-error case); after the voice ends (or
+  a word-count estimate when TTS is off) hold an absorb buffer — **5000 ms for ≥2
+  points, else 1500 ms** — then the pill and all badges fade together. New query
+  resets instantly.
+
+**Numbering:** plain dot for a single pointer, global step number for ≥2. Driven by
+a new `overlay:point-count` broadcast (`companion.ts` → `preload onPointCount` →
+overlay `applyNumbering`): each overlay window only sees its own display's points,
+so the global total must come from the main process. Multi-monitor numbers stay
+globally sequential (e.g. screen A shows 1, 3; screen B shows 2).
+
+**Removals (dead under the lock):**
+- `IncrementalPointExtractor` reverted to `push(): RawPointTag[]` (dropped the
+  per-point lead-in `text` + `sinceTag`); `ExtractedPoint` deleted.
+- `prompt.ts` reverted to inline-anywhere tag placement (the end-of-sentence
+  contract only mattered for per-point text, which is gone).
+- `overlay:point` payload dropped `text` (keeps `index`).
+- The **legacy walking-dot** path and the **`overlayNumberedMap`** setting/toggle
+  removed — the constellation is the only pointer behavior. `overlayCaptionEnabled`
+  (pill text on/off) stays.
+
+**Overlay engine:** the per-step walk (`mapAdvance`/`mapShowChunk`/`mapArmDwell`/
+`mapFinish`/dwell state) and the legacy dot are gone. The caption now always
+anchors at the cursor (reusing the typewriter/placement/flip mechanics) and a small
+**constellation module** (`makeBadge`/`scheduleReveal` reveal-on-arrival-with-min-gap/
+`applyNumbering`/`beginReveal`/`finishAll`/`resetAll`) renders the badges. A single
+`finishAll(holdMs)` funnel (gated on caption-reveal-done so a fast voice can't fade
+text mid-type) fades pill + badges together; a `token` guards the post-fade clear so
+a superseded query can't wipe the next answer's badges.
 **Branch:** `feat/overlay-numbered-map`
 **Components:** `src/services/tts/queue.ts`, `src/main/companion.ts`,
 `src/preload/index.ts`, `src/renderer/overlay/index.html`

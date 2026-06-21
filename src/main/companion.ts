@@ -46,14 +46,13 @@ const MAX_CONVERSATION_HISTORY = 10;
  * the same `id` and updates the already-shown point in place; `kind:"reset"`
  * clears the overlay at the start of a new query.
  *
- * `index` is the 1-based step number across the whole reply (numbered-map mode);
- * `text` is the point's lead-in narration. Both ride along on `raw`; `index` is
- * carried on `refine` (so a re-render keeps its number), `text` is not.
+ * `index` is the 1-based step number across the whole reply, used for the
+ * overlay's numbered badges. It rides along on `raw` and is carried on `refine`
+ * so a re-render keeps its number.
  */
 interface OverlayPoint {
   id?: string;
   index?: number;
-  text?: string;
   x?: number;
   y?: number;
   label?: string;
@@ -231,7 +230,7 @@ export class CompanionManager {
 
         // 3b. Points: show the raw estimate immediately; for Claude, refine
         //     concurrently and nudge the same point into place when it returns.
-        for (const { tag, text } of pointEx.push(chunk)) {
+        for (const tag of pointEx.push(chunk)) {
           const id = `p${this.pointSeq++}`;
           const prepared = this.prepareTag(tag, screenshots);
           if (!prepared) continue;
@@ -240,12 +239,15 @@ export class CompanionManager {
           this.sendPoint(prepared.overlayIdx, {
             id,
             index,
-            text,
             x: prepared.x,
             y: prepared.y,
             label: tag.label,
             kind: "raw",
           });
+          // Broadcast the running total to EVERY overlay window (not just this
+          // point's display) so each can decide plain-dot vs numbered: a window
+          // only sees its own display's points and can't know the global total.
+          this.notifyAll("overlay:point-count", { count: stepIndex });
           if (aiProviderName === "anthropic") {
             void this.refineTagAsync(tag, id, index, screenshots, session);
           }

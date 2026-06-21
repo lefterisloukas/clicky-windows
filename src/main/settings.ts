@@ -54,7 +54,6 @@ interface SettingsSchema {
   alwaysOnTop: boolean;
   cursorBuddyEnabled: boolean;
   overlayCaptionEnabled: boolean;
-  overlayNumberedMap: boolean;
   popoverWidth: number;
   popoverHeight: number;
 
@@ -87,7 +86,6 @@ const defaults: SettingsSchema = {
   alwaysOnTop: false,
   cursorBuddyEnabled: true,
   overlayCaptionEnabled: true,
-  overlayNumberedMap: true,
   popoverWidth: 380,
   popoverHeight: 600,
   aiProvider: "anthropic",
