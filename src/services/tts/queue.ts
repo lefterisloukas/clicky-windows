@@ -43,7 +43,25 @@ export class TTSQueue {
   // Resolvers waiting on whenIdle() — drained once all queued audio has played.
   private idleResolvers: Array<() => void> = [];
 
-  constructor(private readonly settings: SettingsStore) {}
+  // Fired once, the first time any audio actually starts playing. Lets the
+  // overlay align its first step reveal with the voice instead of a timer.
+  private firstPlayed = false;
+
+  constructor(
+    private readonly settings: SettingsStore,
+    private readonly onFirstPlay?: () => void
+  ) {}
+
+  /** Fire onFirstPlay exactly once, when the first clip begins playing. */
+  private notifyFirstPlay(): void {
+    if (this.firstPlayed || this.cancelled) return;
+    this.firstPlayed = true;
+    try {
+      this.onFirstPlay?.();
+    } catch {
+      /* non-fatal: a listener error must not break playback */
+    }
+  }
 
   /** Queue a sentence for playback. No-op once cancelled. */
   enqueue(sentence: string | null | undefined): void {
@@ -59,6 +77,7 @@ export class TTSQueue {
       this.chain = this.chain
         .then(() => {
           if (this.cancelled || !this.provider) return;
+          this.notifyFirstPlay();  // this sentence is about to play
           return this.provider.speak(text).catch((err) => {
             console.warn(
               "TTS sentence failed (non-fatal):",
@@ -154,6 +173,7 @@ export class TTSQueue {
         if (nextText !== undefined) pending = provider.synthesize(nextText);
 
         try {
+          this.notifyFirstPlay();  // first clip is about to play
           await synth.play();
         } catch (err) {
           console.warn(

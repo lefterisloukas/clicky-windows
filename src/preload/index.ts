@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("clicky", {
   onPoint: (
     callback: (point: {
       id?: string;
+      index?: number;
       x?: number;
       y?: number;
       label?: string;
@@ -29,6 +30,14 @@ contextBridge.exposeInMainWorld("clicky", {
   ) => {
     ipcRenderer.on("overlay:point", (_event, point) => {
       callback(point);
+    });
+  },
+
+  // Running global point count for a query — lets each overlay window decide
+  // plain-dot (1 point) vs numbered (2+) without knowing other displays' points.
+  onPointCount: (callback: (count: number) => void) => {
+    ipcRenderer.on("overlay:point-count", (_event, data) => {
+      callback(data && typeof data.count === "number" ? data.count : 0);
     });
   },
 
@@ -89,6 +98,12 @@ contextBridge.exposeInMainWorld("clicky", {
     callback: (data: { text: string; error?: string }) => void
   ) => {
     ipcRenderer.on("chat:stream-end", (_event, data) => callback(data));
+  },
+
+  // Fires the moment TTS playback for a query begins — lets the numbered map
+  // reveal its first step in sync with the voice instead of a timer.
+  onSpeakingStarted: (callback: () => void) => {
+    ipcRenderer.on("companion:speaking-started", () => callback());
   },
 
   // Fires when TTS playback for a query has fully drained — lets the overlay

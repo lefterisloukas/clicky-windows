@@ -6,7 +6,239 @@ unless otherwise noted). Newest entries go at the top.
 
 ---
 
-## 2026-06-20
+## 2026-06-21
+
+### feat/overlay-numbered-map — PR #7 review fixes (pill migrates across monitors)
+**Branch:** `feat/overlay-numbered-map`
+**Components:** `src/renderer/overlay/index.html`
+
+Three follow-ups from the PR #7 review:
+
+- **Caption pill now migrates across monitors.** Previously the pill anchored on
+  the cursor's display at reveal time and froze there — moving the mouse to
+  another monitor left it stranded. A new per-window `capOwner` flag tracks which
+  display currently shows the pill; in the `overlay:companion-anchor` handler, the
+  display the cursor moves *onto* takes over the pill (jumping straight to the
+  fully-revealed text so it stays in sync with the voice rather than replaying the
+  typewriter), and the display it leaves hides and releases it (dropping its anchor
+  so a later delta can't re-show a hidden pill). Only active while following (the
+  tray toggle); pinned mode never migrates. `maybeFinish` now gates the
+  "don't fade mid-type" wait on `capOwner` (not `capAnchor`), and `fadeAll` clears
+  `capActive`/`capOwner` up front so a mouse move into another display can't
+  re-acquire a pill that's already fading.
+- **TTS-on hang backstop padded.** The estimate-based `fallbackTimer` is now padded
+  by `VOICE_HANG_PAD` (10 s) when TTS is on, so it acts purely as a backstop for a
+  dropped `companion:speaking-ended` and can never preempt speech that started late;
+  with TTS off it remains the tight estimate that drives the absorb hold.
+- **Dropped dead `voiceStarted` state** — it was set and reset but never read
+  (`revealStarted` already guards `beginReveal`).
+
+### feat/overlay-numbered-map — caption pill follows the cursor (tray toggle)
+**Branch:** `feat/overlay-numbered-map`
+**Components:** `src/main/settings.ts`, `src/main/tray.ts`, `src/main/index.ts`,
+`src/renderer/overlay/index.html`
+
+The caption pill anchored once and stayed put. It now **follows the cursor by
+default**, with a tray menu checkbox **"Caption follows cursor"** that, when
+unchecked, restores the anchored-once behavior.
+
+No new cursor feed was needed: `overlay:companion-anchor` already streams the live
+cursor position every 16 ms (`startCursorBuddy`); the pill simply never re-read it.
+
+- New setting `overlayCaptionFollowCursor` (default `true`).
+- `tray.ts` takes the `SettingsStore` and adds a `checkbox` item reading/writing
+  it (the tray is the only writer, so Electron's checkbox state stays in sync
+  without a rebuild).
+- Overlay caches `captionFollow` (with `capEnabled`/`ttsOn`); in the existing
+  `onCompanionAnchor` handler it updates `capAnchor` + `captionPlace()` each tick
+  while a caption is live and following. The `#response` `left/top` transition was
+  shortened to `0.15s` so following glides instead of jittering. Off → `capAnchor`
+  is never updated after `beginReveal`, so the pill stays put.
+- Read at the next query's `stream-start` (cached), like `overlayCaptionEnabled`.
+  Badges always stay anchored to their elements, in both modes.
+
+### feat/overlay-numbered-map — lock the "cursor pill + numbered constellation" behavior
+**Branch:** `feat/overlay-numbered-map`
+**Components:** `src/renderer/overlay/index.html`, `src/services/incremental.ts`,
+`src/services/prompt.ts`, `src/main/companion.ts`, `src/preload/index.ts`,
+`src/main/settings.ts`, `src/renderer/settings/index.html`
+
+Replaces the numbered-map **walk** (badges advancing one-at-a-time on a
+reading-time dwell, the pill riding the active badge with per-point text). In
+practice the caption reveal and the voice never stayed in sync — text streamed at
+pill 3 while the voice was on pill 1 — because there is no reliable per-sentence
+voice timing. After product exploration we locked a simpler, sync-proof behavior
+and **removed the now-dead machinery**.
+
+**Hard rule:** the caption is ONE block in ONE place (anchored once at the cursor,
+full reply, never relocates/re-segments); pointers all appear together; the only
+timed events are reveal (voice-start) and fade (voice-end + hold).
+
+**Locked behavior**
+- **No pointer:** full reply in a pill at the cursor.
+- **One pointer:** plain dot + short label chip on the element, + the cursor pill.
+- **Multiple:** numbered dots (each with a label chip) that **cascade in** (~500 ms
+  apart — a quick entrance, not a voice-paced walk), + the cursor pill.
+- **Shared:** reveal gated on `companion:speaking-started` (TTS off begins promptly,
+  with a 4 s backstop for the 0-point / voice-error case); after the voice ends (or
+  a word-count estimate when TTS is off) hold an absorb buffer — **5000 ms for ≥2
+  points, else 1500 ms** — then the pill and all badges fade together. New query
+  resets instantly.
+
+**Numbering:** plain dot for a single pointer, global step number for ≥2. Driven by
+a new `overlay:point-count` broadcast (`companion.ts` → `preload onPointCount` →
+overlay `applyNumbering`): each overlay window only sees its own display's points,
+so the global total must come from the main process. Multi-monitor numbers stay
+globally sequential (e.g. screen A shows 1, 3; screen B shows 2).
+
+**Removals (dead under the lock):**
+- `IncrementalPointExtractor` reverted to `push(): RawPointTag[]` (dropped the
+  per-point lead-in `text` + `sinceTag`); `ExtractedPoint` deleted.
+- `prompt.ts` reverted to inline-anywhere tag placement (the end-of-sentence
+  contract only mattered for per-point text, which is gone).
+- `overlay:point` payload dropped `text` (keeps `index`).
+- The **legacy walking-dot** path and the **`overlayNumberedMap`** setting/toggle
+  removed — the constellation is the only pointer behavior. `overlayCaptionEnabled`
+  (pill text on/off) stays.
+
+**Overlay engine:** the per-step walk (`mapAdvance`/`mapShowChunk`/`mapArmDwell`/
+`mapFinish`/dwell state) and the legacy dot are gone. The caption now always
+anchors at the cursor (reusing the typewriter/placement/flip mechanics) and a small
+**constellation module** (`makeBadge`/`scheduleReveal` reveal-on-arrival-with-min-gap/
+`applyNumbering`/`beginReveal`/`finishAll`/`resetAll`) renders the badges. A single
+`finishAll(holdMs)` funnel (gated on caption-reveal-done so a fast voice can't fade
+text mid-type) fades pill + badges together; a `token` guards the post-fade clear so
+a superseded query can't wipe the next answer's badges.
+**Branch:** `feat/overlay-numbered-map`
+**Components:** `src/services/tts/queue.ts`, `src/main/companion.ts`,
+`src/preload/index.ts`, `src/renderer/overlay/index.html`
+
+The numbered map advanced on a pure time estimate, independent of TTS. In
+practice the badges raced ahead while TTS was still spinning up the first
+sentence — the voice for step 1 could begin only as the *last* badge was
+showing. The dominant cause was startup latency, not pacing: the walk began the
+instant points streamed in, seconds before any audio was audible.
+
+Interim fix (not full Phase 2): **gate the first reveal on the voice actually
+starting.**
+- `TTSQueue` gained an optional `onFirstPlay` constructor callback, fired exactly
+  once the first clip begins playing — hooked into both the pipelined `pump()`
+  (before `synth.play()`) and the sequential `chain` (before `speak()`).
+- `companion.ts` passes it, broadcasting `companion:speaking-started` (gated on
+  `!session.cancelled`).
+- `preload` exposes `onSpeakingStarted`.
+- The overlay holds the first `mapAdvance()` until that signal (new `startWalk`):
+  it starts at once if speech has already begun or TTS is off (`mapTtsOn`,
+  cached from `ttsEnabled`), otherwise waits, with `MAP_START_FALLBACK` (4 s) as
+  a backstop if no voice signal ever arrives (e.g. a TTS error). All gate state
+  (`mapStarted`, `mapVoiceStarted`, `mapStartTimer`) resets in `mapReset`.
+
+Once aligned at the start, the existing `words × CAP_MS_PER_WORD` dwell keeps
+later steps roughly tracking speech. This is the start-alignment slice; true
+per-step speech gating remains Phase 2 (`NEXT.md`), and the `onFirstPlay` hook is
+a reusable step toward it.
+
+### feat/overlay-numbered-map — move POINT tags to end-of-sentence (prompt↔parser contract)
+**Branch:** `feat/overlay-numbered-map`
+**Components:** `src/services/prompt.ts`, `src/services/incremental.ts` (doc only)
+
+⚠️ **Surgical / critical — read before touching either file.** This couples the
+shared system prompt to the point-text parser. They must change together.
+
+**Why.** The numbered map shows each step's text beside its pointer. That text
+comes from `IncrementalPointExtractor`, which assigns each tag "the prose since
+the previous tag." The prompt, however, taught the model to embed tags
+*mid-sentence* (`...click the "Share" button [POINT…] in the top right corner.`),
+so the per-step text came out fragmented: step 1 lost "in the top right corner"
+and step 2 inherited that orphan clause; a trailing clause after the last tag was
+dropped entirely. Observed live on Gemini with a Trello "share / add list / add
+card" query.
+
+**Decision.** Fix it prompt-side, not parser-side. We considered a sentence-aware
+parser (robust to any placement) but it adds ~40 lines of streaming
+sentence-segmentation. Since the model's tag placement is something we control
+via the prompt, and the existing lead-in extractor already yields a whole
+sentence *when the tag sits at the sentence end*, the cheaper, equally-correct fix
+is to require that placement. The coordinate space is unchanged (coords live in
+the tag regardless of position), so pointing accuracy is unaffected. The
+sentence-aware parser stays in reserve if a model proves non-compliant.
+
+**Change.** `prompt.ts` now requires each element's POINT tag at the **end** of
+its sentence (after the closing punctuation), one sentence = one step = one tag:
+- New "Tag placement" section + rewritten rule 3 & 4 (was "tags can appear inline
+  anywhere").
+- All worked examples moved to end-of-sentence; added a multi-step example.
+- Counter-example added for the mid-sentence mistake; the old "correct" example
+  (which itself showed an inline tag) fixed to end-of-sentence.
+- New pre-send checklist item: each tag at the end of its sentence.
+
+`incremental.ts` is unchanged in behavior — only a CONTRACT note added on
+`ExtractedPoint` documenting that the lead-in text reads as a whole instruction
+**only** because the prompt guarantees end-of-sentence placement.
+
+**Verification.** `npx tsc` clean. Live: re-run a multi-step query and confirm
+each step's pill shows one complete sentence (no orphan leading clause, no dropped
+trailing clause). If a provider slips a tag mid-sentence, that one step will
+fragment — the signal to revive the sentence-aware parser.
+
+### feat/overlay-numbered-map — guide multi-point answers one step at a time
+**Branch:** `feat/overlay-numbered-map`
+**Components:** `src/services/incremental.ts`, `src/main/companion.ts`,
+`src/preload/index.ts`, `src/main/settings.ts`,
+`src/renderer/settings/index.html`, `src/renderer/overlay/index.html`
+
+When the model pointed at 2–3 UI elements in one answer, the overlay split the
+user's attention: a single blue dot walked points 1→2→3 on a blind 2-second
+timer while the text pill anchored once to point 1 and streamed the whole reply
+there — so the full answer sat at point 1 while the dot was already at point 3.
+
+The new **Numbered Map** replaces that choreography. Every point gets a
+persistent numbered badge (①②③) that stays on screen as a route map; exactly one
+badge glows at a time, covered steps dim into a "done" trail, and the pill rides
+the **active** badge showing only **that step's** text — so words and the
+highlighted target are always co-located. Steps advance sequentially, never
+before the current one has been read.
+
+**How it works**
+- **Per-point text.** `IncrementalPointExtractor.push` now returns
+  `{ tag, text }[]`, where `text` is the prose that preceded each tag (its
+  lead-in narration). A `sinceTag` accumulator carries settled prose across
+  pushes so a point's lead-in survives the bounded-buffer trim, and the bytes of
+  a tag split across network chunks are never mistaken for prose.
+- **Numbering.** `companion.ts` assigns a query-local 1-based `index` to each
+  rendered point and sends `index` + `text` on the `overlay:point` payload
+  (`refine` carries `index` only). Numbering is assigned centrally so it stays
+  globally sequential across monitors (each overlay window sees only its own
+  display's subset).
+- **Renderer.** `overlay/index.html` gains a `#badges` layer and a `mapOnPoint`
+  /`mapAdvance` engine. The shared `#response` pill is reused per-step by setting
+  the `cap*` state and calling the existing `captionRender/Place/Show/StartTyping`
+  helpers; `captionMaybeFinish` early-returns while `mapOwnsPill`, so only
+  `mapFinish` hides the pill (at the end of the walk, not between steps).
+- **Advancement (phased).** A step is held for a reading-time estimate
+  (`max(reveal time, words × CAP_MS_PER_WORD, 1400 ms)`, capped at 9 s), so the
+  next pointer never appears before the current step is read. *Phase 2 (separate
+  PR)* will gate on true speech-finished via per-step markers through the TTS
+  queue.
+- **Trail lifecycle.** The badge map stays up while you work through it, then
+  auto-clears: the pill fades `CAP_LINGER` (1.5 s) after the last step, and the
+  badges fade out `MAP_CLEAR_AFTER` (10 s) after the walk ends (`mapFinish`).
+  Two cancellable timers (`mapClearTimer` wait, `mapRemoveTimer` fade) back this
+  so a new query's `mapReset` wipes the trail instantly and a pending clear can
+  never erase the next answer's badges.
+
+**Setting.** New `overlayNumberedMap` toggle (default **on**), shown in settings
+as "Numbered steps". The existing `overlayCaptionEnabled` stays the master
+"show any pill text" switch — captions off + map on gives a silent numbered
+trail. Toggling off restores the legacy walking-dot choreography (kept intact as
+a fallback). The flag is read at each query's stream-start.
+
+**Edge cases handled.** Zero-point answers fall back to the cursor-anchored full
+caption (decided at stream-end so a sentence of preamble before the first point
+doesn't trigger it early); single-point answers show one badge + pill; refine
+nudges the badge (and the pill if it's the active step); a superseded query's
+reset clears badges, timers, and the pill; `prefers-reduced-motion` drops the
+glow/pulse and reveals text instantly while still honoring the read dwell.
 
 ### fix/forgotten-fixes — apply leftover PR #1 review fixes
 **Branch:** `fix/forgotten-fixes`
