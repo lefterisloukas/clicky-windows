@@ -1,6 +1,5 @@
-import { Tray, Menu, nativeImage, MenuItem } from "electron";
+import { Tray, Menu, nativeImage } from "electron";
 import path from "path";
-import { SettingsStore } from "./settings";
 
 interface TrayCallbacks {
   onChat: () => void;
@@ -16,7 +15,7 @@ export function getTray(): Tray | null {
   return tray;
 }
 
-export function createTray(callbacks: TrayCallbacks, settings: SettingsStore): Tray {
+export function createTray(callbacks: TrayCallbacks): Tray {
   const icon = nativeImage.createFromPath(
     path.join(__dirname, "..", "..", "assets", "icon.ico")
   );
@@ -35,17 +34,6 @@ export function createTray(callbacks: TrayCallbacks, settings: SettingsStore): T
     {
       label: "Settings",
       click: callbacks.onSettings,
-    },
-    { type: "separator" },
-    {
-      // When checked (default), the caption pill follows the cursor; uncheck to
-      // pin it where it first appears. The tray is the only writer, so the
-      // checkbox state Electron tracks stays in sync without a rebuild.
-      label: "Caption follows cursor",
-      type: "checkbox",
-      checked: settings.get("overlayCaptionFollowCursor") !== false,
-      click: (item: MenuItem) =>
-        settings.set("overlayCaptionFollowCursor", item.checked),
     },
     { type: "separator" },
     {

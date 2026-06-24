@@ -8,6 +8,25 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-24
 
+### feat/caption-follow-toggle-in-settings — move "Caption follows cursor" to settings
+**Branch:** `feat/caption-follow-toggle-in-settings`
+**Components:** `src/main/tray.ts`, `src/main/index.ts`,
+`src/renderer/settings/index.html`
+
+The "Caption follows cursor" control (`overlayCaptionFollowCursor`) lived only
+in the system-tray context menu. It now lives **only in the settings window**.
+Removed the tray checkbox (and its separator); `createTray` no longer needs the
+`SettingsStore` argument. The overlay already reads the setting from
+`getSettings()` per query, so no IPC change was needed — settings-window writes
+are picked up the same way as the existing caption toggle.
+
+The behavior switches were also relabelled for clarity (the three cursor/caption
+rows were jargony and read as unrelated). New copy: **Always on top**, **Cursor
+glow**, **Reply caption**, and — nested beneath it as a sub-option — **↳ Follow
+the cursor** (*the caption moves along with your pointer*); **HIPAA mode** kept.
+The follow-cursor sub-row is indented and is greyed-out / inert while "Reply
+caption" is off.
+
 ### feat/opencode-go-provider — add OpenCode Go as an AI provider (vision-aware)
 **Branch:** `feat/opencode-go-provider`
 **Components:** `src/services/opencode-go-chat.ts` (new), `src/main/settings.ts`,
