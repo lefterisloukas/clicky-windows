@@ -147,6 +147,11 @@
     .sw .track i { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
       background: #fff; transition: left .2s; }
     .sw .track.on i { left: 18px; }
+    /* Sub-option nested under the row above it (e.g. caption follow-cursor). */
+    .sw.sub { padding-left: 26px; padding-top: 2px; }
+    .sw.sub .ic { color: var(--faint); }
+    /* Greyed-out + non-interactive while its parent toggle is off. */
+    .sw.disabled { opacity: .4; pointer-events: none; }
   </style>
 </head>
 <body>
@@ -380,10 +385,10 @@
   </div>
 
   <div class="behavior">
-    <div class="sw"><span class="ic">⇧</span><span class="lbl">Always on top</span><span class="track" id="alwaysOnTop"><i></i></span></div>
-    <div class="sw"><span class="ic">✷</span><span class="lbl">Cursor buddy<small>blue glow follows the mouse</small></span><span class="track" id="cursorBuddyEnabled"><i></i></span></div>
-    <div class="sw"><span class="ic">💬</span><span class="lbl">Response caption<small>streams the reply near the cursor</small></span><span class="track" id="overlayCaptionEnabled"><i></i></span></div>
-    <div class="sw"><span class="ic">🎯</span><span class="lbl">Caption follows cursor<small>off pins it where it first appears</small></span><span class="track" id="overlayCaptionFollowCursor"><i></i></span></div>
+    <div class="sw"><span class="ic">⇧</span><span class="lbl">Always on top<small>stay above other windows</small></span><span class="track" id="alwaysOnTop"><i></i></span></div>
+    <div class="sw"><span class="ic">✷</span><span class="lbl">Cursor glow<small>blue glow follows your pointer</small></span><span class="track" id="cursorBuddyEnabled"><i></i></span></div>
+    <div class="sw"><span class="ic">💬</span><span class="lbl">Reply caption<small>stream the reply in a pill by the cursor</small></span><span class="track" id="overlayCaptionEnabled"><i></i></span></div>
+    <div class="sw sub" id="followCursorRow"><span class="ic">↳</span><span class="lbl">Follow the cursor<small>the caption moves along with your pointer</small></span><span class="track" id="overlayCaptionFollowCursor"><i></i></span></div>
     <div class="sw"><span class="ic">⛨</span><span class="lbl">HIPAA mode<small>local processing only</small></span><span class="track" id="hipaaMode"><i></i></span></div>
   </div>
 
@@ -601,6 +606,7 @@
 
       // toggles
       ['alwaysOnTop','cursorBuddyEnabled','overlayCaptionEnabled','overlayCaptionFollowCursor','hipaaMode'].forEach((k) => $(k).classList.toggle('on', !!S[k]));
+      syncFollowCursorRow();
 
       refreshAll();
 
@@ -676,7 +682,12 @@
     }
     wireToggle('alwaysOnTop');
     wireToggle('cursorBuddyEnabled');
-    wireToggle('overlayCaptionEnabled');
+    // "Follow the cursor" is a sub-option of "Reply caption" — grey it out and
+    // make it inert while captions are off.
+    function syncFollowCursorRow() {
+      $('followCursorRow').classList.toggle('disabled', !S.overlayCaptionEnabled);
+    }
+    wireToggle('overlayCaptionEnabled', syncFollowCursorRow);
     wireToggle('overlayCaptionFollowCursor');
     wireToggle('hipaaMode', (on) => {
       if (!on) return;

@@ -14,12 +14,18 @@ unless otherwise noted). Newest entries go at the top.
 `src/renderer/settings/index.html`
 
 The "Caption follows cursor" control (`overlayCaptionFollowCursor`) lived only
-in the system-tray context menu. It now lives **only in the settings window** as
-a behavior switch beneath "Response caption" (off pins the pill where it first
-appears). Removed the tray checkbox (and its separator); `createTray` no longer
-needs the `SettingsStore` argument. The overlay already reads the setting from
+in the system-tray context menu. It now lives **only in the settings window**.
+Removed the tray checkbox (and its separator); `createTray` no longer needs the
+`SettingsStore` argument. The overlay already reads the setting from
 `getSettings()` per query, so no IPC change was needed — settings-window writes
-are picked up the same way as the existing "Response caption" toggle.
+are picked up the same way as the existing caption toggle.
+
+The behavior switches were also relabelled for clarity (the three cursor/caption
+rows were jargony and read as unrelated). New copy: **Always on top**, **Cursor
+glow**, **Reply caption**, and — nested beneath it as a sub-option — **↳ Follow
+the cursor** (*the caption moves along with your pointer*); **HIPAA mode** kept.
+The follow-cursor sub-row is indented and is greyed-out / inert while "Reply
+caption" is off.
 
 ### feat/opencode-go-provider — add OpenCode Go as an AI provider (vision-aware)
 **Branch:** `feat/opencode-go-provider`
