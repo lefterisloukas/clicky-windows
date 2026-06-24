@@ -136,6 +136,13 @@ contextBridge.exposeInMainWorld("clicky", {
   ): Promise<{ ok: boolean; error?: string; models?: string[] }> =>
     ipcRenderer.invoke("settings:testGeminiKey", apiKey, baseUrl),
 
+  // OpenCode Go: verify API key + refresh the cached model list
+  testOpenCodeGoKey: (
+    apiKey: string,
+    baseUrl?: string
+  ): Promise<{ ok: boolean; error?: string; models?: string[] }> =>
+    ipcRenderer.invoke("settings:testOpenCodeGoKey", apiKey, baseUrl),
+
   // Chat — send a text query (captures screen + sends to Claude)
   sendQuery: (text: string): Promise<string> =>
     ipcRenderer.invoke("chat:query", text),

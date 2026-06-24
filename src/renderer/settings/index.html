@@ -175,11 +175,12 @@
         <div class="body">
           <div class="nest">
             <div class="nlabel">Provider</div>
-            <div class="seg c4" id="segProvider">
+            <div class="seg c5" id="segProvider">
               <button data-value="anthropic">Anthropic</button>
               <button data-value="openai">OpenAI</button>
               <button data-value="openrouter">Router</button>
               <button data-value="gemini">Gemini</button>
+              <button data-value="opencode-go">OC&nbsp;Go</button>
             </div>
 
             <div class="nlabel">Models · <b id="modelProviderLabel">Anthropic</b></div>
@@ -213,6 +214,14 @@
               <button type="button" class="test" id="testGemini">Test API connection</button>
               <div class="hint" id="testGeminiResult"></div>
             </div>
+            <div id="opencodeGoModelGroup" style="display:none">
+              <select id="opencodeGoModel"></select>
+              <div class="hint" id="opencodeGoModelHint">Test the key to load models.</div>
+              <div class="hint" id="opencodeGoWarn" style="display:none;color:#d98324"></div>
+              <input type="text" id="opencodeGoBaseUrl" placeholder="Base URL (optional)" style="margin-top:8px">
+              <button type="button" class="test" id="testOpencodeGo">Test API connection</button>
+              <div class="hint" id="testOpencodeGoResult"></div>
+            </div>
 
             <div id="reasoningGroup" style="display:none">
               <div class="nlabel">Reasoning · <b id="reasoningProviderLabel">Gemini</b></div>
@@ -229,6 +238,13 @@
                 <button data-value="high">High</button>
                 <button data-value="default">Auto</button>
               </div>
+              <div class="seg c4" id="segOpencodeGoReasoning" style="display:none">
+                <button data-value="off">Off</button>
+                <button data-value="low">Low</button>
+                <button data-value="medium">Med</button>
+                <button data-value="high">High</button>
+              </div>
+              <div class="hint" id="opencodeGoReasoningHint" style="display:none">Most vision models reason by default and ignore this; only some models accept an effort level.</div>
             </div>
           </div>
         </div>
@@ -335,6 +351,7 @@
           <div class="krow"><div class="kmeta"><span class="svc">OpenAI</span></div><input type="password" id="openaiApiKey" placeholder="sk-…"></div>
           <div class="krow"><div class="kmeta"><span class="svc">OpenRouter</span></div><input type="password" id="openrouterApiKey" placeholder="sk-or-…"></div>
           <div class="krow"><div class="kmeta"><span class="svc">Google</span></div><input type="password" id="geminiApiKey" placeholder="AIza…"></div>
+          <div class="krow"><div class="kmeta"><span class="svc">OpenCode Go</span></div><input type="password" id="opencodeGoApiKey" placeholder="sk-…"></div>
           <div class="nlabel">Voice services</div>
           <div class="krow"><div class="kmeta"><span class="svc">Groq</span><span class="tag">speech-to-text</span></div><input type="password" id="groqApiKey" placeholder="gsk-…"></div>
           <div class="krow"><div class="kmeta"><span class="svc">AssemblyAI</span><span class="tag">speech-to-text</span></div><input type="password" id="assemblyaiApiKey" placeholder="key"></div>
@@ -376,11 +393,23 @@
     const GEMINI_DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
     const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash';
 
+    const OPENCODE_GO_DEFAULT_BASE_URL = 'https://opencode.ai/zen/go/v1';
+    const OPENCODE_GO_DEFAULT_MODEL = 'qwen3.7-plus';
+    // Display-only mirror of OPENCODE_GO_CAPS in services/opencode-go-chat.ts —
+    // keep in sync. Vision flags were verified against the live Go endpoint.
+    const OPENCODE_GO_VISION = new Set(['kimi-k2.7-code','kimi-k2.6','kimi-k2.5','qwen3.7-plus','qwen3.6-plus','qwen3.5-plus','minimax-m3','mimo-v2.5','mimo-v2-omni']);
+    const OPENCODE_GO_TEXT = new Set(['glm-5.2','glm-5.1','glm-5','qwen3.7-max','minimax-m2.7','minimax-m2.5','mimo-v2.5-pro','mimo-v2-pro','deepseek-v4-pro','deepseek-v4-flash']);
+    function opencodeGoVision(id) {
+      if (OPENCODE_GO_VISION.has(id)) return 'vision';
+      if (OPENCODE_GO_TEXT.has(id)) return 'text';
+      return 'unknown';
+    }
+
     const $ = (id) => document.getElementById(id);
     let S = {}; // settings cache
 
-    const PROVIDER_LABEL = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini' };
-    const MODELHOST_LABEL = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini' };
+    const PROVIDER_LABEL = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini', 'opencode-go': 'OpenCode Go' };
+    const MODELHOST_LABEL = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini', 'opencode-go': 'OpenCode Go' };
     const STT_LABEL = { groq: 'Groq', openai: 'Whisper', assemblyai: 'AssemblyAI', 'whisper-local': 'Local' };
     const TTS_LABEL = { off: 'Off', local: 'Windows', kokoro: 'Kokoro', openai: 'OpenAI', elevenlabs: 'ElevenLabs' };
 
@@ -445,6 +474,43 @@
         ? `Updated ${(() => { const d = Math.floor((Date.now() - fetchedAt) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day ago' : d + ' days ago'; })()} · re-test to refresh.`
         : 'Test the key to load models.';
     }
+    function renderOpencodeGoModelDropdown(savedModel, cachedList) {
+      const select = $('opencodeGoModel');
+      const seen = new Set(); const ids = [];
+      const push = (id) => { if (id && !seen.has(id)) { seen.add(id); ids.push(id); } };
+      push(OPENCODE_GO_DEFAULT_MODEL); push(savedModel);
+      for (const id of (cachedList || [])) push(id);
+      // vision-capable first, unknowns next, text-only last
+      const rank = { vision: 0, unknown: 1, text: 2 };
+      ids.sort((a, b) => rank[opencodeGoVision(a)] - rank[opencodeGoVision(b)]);
+      select.innerHTML = '';
+      for (const id of ids) {
+        const v = opencodeGoVision(id);
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = id + (v === 'vision' ? ' · vision' : v === 'text' ? ' · text-only' : ' · vision?');
+        if (id === savedModel) opt.selected = true;
+        select.appendChild(opt);
+      }
+      const fetchedAt = S.opencodeGoModelListFetchedAt || 0;
+      const hint = $('opencodeGoModelHint');
+      hint.textContent = fetchedAt
+        ? `Updated ${(() => { const d = Math.floor((Date.now() - fetchedAt) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day ago' : d + ' days ago'; })()} · re-test to refresh.`
+        : 'Test the key to load models.';
+      updateOpencodeGoWarning();
+    }
+    function updateOpencodeGoWarning() {
+      const id = $('opencodeGoModel').value;
+      const v = opencodeGoVision(id);
+      const w = $('opencodeGoWarn');
+      if (v === 'text') {
+        w.style.display = ''; w.textContent = '⚠ This model is text-only — it can’t see your screen and won’t point.';
+      } else if (v === 'unknown') {
+        w.style.display = ''; w.textContent = '⚠ Vision support unverified for this model — it may not point.';
+      } else {
+        w.style.display = 'none'; w.textContent = '';
+      }
+    }
 
     // ---- UI sync ----
     function currentLlmModel() {
@@ -452,6 +518,7 @@
       if (p === 'openai') return S.openaiModel;
       if (p === 'openrouter') return S.openrouterModel;
       if (p === 'gemini') return S.geminiModel;
+      if (p === 'opencode-go') return S.opencodeGoModel;
       return S.claudeModel;
     }
     function shortModel(m) { return (m || '').replace(/^(anthropic|openai|google|meta-llama|deepseek|mistralai)\//, ''); }
@@ -462,12 +529,15 @@
       $('openaiModelGroup').style.display = p === 'openai' ? '' : 'none';
       $('openrouterModelGroup').style.display = p === 'openrouter' ? '' : 'none';
       $('geminiModelGroup').style.display = p === 'gemini' ? '' : 'none';
+      $('opencodeGoModelGroup').style.display = p === 'opencode-go' ? '' : 'none';
       $('modelProviderLabel').textContent = MODELHOST_LABEL[p] || p;
-      // reasoning visible only for openai + gemini
-      const showReason = p === 'openai' || p === 'gemini';
+      // reasoning visible only for openai + gemini + opencode-go
+      const showReason = p === 'openai' || p === 'gemini' || p === 'opencode-go';
       $('reasoningGroup').style.display = showReason ? '' : 'none';
       $('segOpenaiReasoning').style.display = p === 'openai' ? '' : 'none';
       $('segGeminiReasoning').style.display = p === 'gemini' ? '' : 'none';
+      $('segOpencodeGoReasoning').style.display = p === 'opencode-go' ? '' : 'none';
+      $('opencodeGoReasoningHint').style.display = p === 'opencode-go' ? '' : 'none';
       $('reasoningProviderLabel').textContent = MODELHOST_LABEL[p] || p;
     }
     function updateSttUI() {
@@ -494,11 +564,11 @@
       $('valLlm').textContent = (PROVIDER_LABEL[p] || p) + ' · ' + shortModel(currentLlmModel());
       $('valStt').textContent = (STT_LABEL[stt] || stt) + (stt === 'groq' ? ' · ' + shortModel(S.groqSttModel) : '');
       $('valTts').textContent = (TTS_LABEL[tv] || tv) + (tv === 'kokoro' ? ' · ' + (S.kokoroVoice || '').replace(/^[ab][fm]_/, '') : '');
-      const keyCount = ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','groqApiKey','assemblyaiApiKey','elevenlabsApiKey'].filter((k) => S[k]).length;
+      const keyCount = ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','opencodeGoApiKey','groqApiKey','assemblyaiApiKey','elevenlabsApiKey'].filter((k) => S[k]).length;
       $('valKeys').textContent = keyCount + ' connected';
       $('valHotkey').textContent = (S.pushToTalkHotkey || 'Ctrl+Shift').replace('Super', 'Win').replace('+', ' + ') + ' + Space';
       // connected indicator
-      const keyMap = { anthropic: S.anthropicApiKey, openai: S.openaiApiKey, openrouter: S.openrouterApiKey, gemini: S.geminiApiKey };
+      const keyMap = { anthropic: S.anthropicApiKey, openai: S.openaiApiKey, openrouter: S.openrouterApiKey, gemini: S.geminiApiKey, 'opencode-go': S.opencodeGoApiKey };
       const connected = !!keyMap[p] || (S.useProxy && S.proxyUrl);
       $('liveDot').className = connected ? 'live' : 'live off';
       $('liveText').textContent = connected ? 'connected' : 'no key yet';
@@ -510,8 +580,8 @@
       S = settings || {};
 
       // text/password/number/select fields that map 1:1
-      ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','assemblyaiApiKey','groqApiKey','elevenlabsApiKey',
-       'proxyUrl','openrouterModel','geminiBaseUrl','groqBaseUrl','pushToTalkHotkey',
+      ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','opencodeGoApiKey','assemblyaiApiKey','groqApiKey','elevenlabsApiKey',
+       'proxyUrl','openrouterModel','geminiBaseUrl','opencodeGoBaseUrl','groqBaseUrl','pushToTalkHotkey',
        'claudeModel','openaiModel','kokoroQuality'].forEach((k) => { if ($(k)) $(k).value = S[k] || ''; });
 
       $('kokoroSpeed').value = S.kokoroSpeed || 1;
@@ -522,9 +592,11 @@
       markSegmented('segTts', ttsValue());
       markSegmented('segOpenaiReasoning', S.openaiReasoning || 'off');
       markSegmented('segGeminiReasoning', S.geminiReasoning || 'default');
+      markSegmented('segOpencodeGoReasoning', S.opencodeGoReasoning || 'off');
 
       renderGroqModelDropdown(S.groqSttModel || GROQ_DEFAULT_STT_MODEL, S.groqSttModelList || []);
       renderGeminiModelDropdown(S.geminiModel || GEMINI_DEFAULT_MODEL, S.geminiModelList || []);
+      renderOpencodeGoModelDropdown(S.opencodeGoModel || OPENCODE_GO_DEFAULT_MODEL, S.opencodeGoModelList || []);
 
       // toggles
       ['alwaysOnTop','cursorBuddyEnabled','overlayCaptionEnabled','hipaaMode'].forEach((k) => $(k).classList.toggle('on', !!S[k]));
@@ -570,6 +642,7 @@
     });
     setupSegmented('segOpenaiReasoning', (v) => save('openaiReasoning', v));
     setupSegmented('segGeminiReasoning', (v) => save('geminiReasoning', v));
+    setupSegmented('segOpencodeGoReasoning', (v) => save('opencodeGoReasoning', v));
 
     // ---- field listeners (write on change) ----
     function onChange(id, key, transform) {
@@ -577,9 +650,11 @@
       if (!el) return;
       el.addEventListener('change', () => { save(key, transform ? transform(el.value) : el.value); updateGlance(); });
     }
-    ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','assemblyaiApiKey','groqApiKey','elevenlabsApiKey',
-     'proxyUrl','openrouterModel','geminiBaseUrl','groqBaseUrl','pushToTalkHotkey',
-     'claudeModel','openaiModel','geminiModel','groqSttModel','kokoroVoice','kokoroQuality'].forEach((k) => onChange(k, k));
+    ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','opencodeGoApiKey','assemblyaiApiKey','groqApiKey','elevenlabsApiKey',
+     'proxyUrl','openrouterModel','geminiBaseUrl','opencodeGoBaseUrl','groqBaseUrl','pushToTalkHotkey',
+     'claudeModel','openaiModel','geminiModel','opencodeGoModel','groqSttModel','kokoroVoice','kokoroQuality'].forEach((k) => onChange(k, k));
+    // Refresh the vision warning whenever the OpenCode Go model changes.
+    $('opencodeGoModel').addEventListener('change', updateOpencodeGoWarning);
 
     $('kokoroSpeed').addEventListener('input', () => {
       const v = parseFloat($('kokoroSpeed').value || '1');
@@ -646,6 +721,24 @@
           renderGeminiModelDropdown($('geminiModel').value || GEMINI_DEFAULT_MODEL, S.geminiModelList || []);
         } else { setHint('testGeminiResult', (res && res.error) || 'Test failed.', 'error'); }
       } catch (err) { setHint('testGeminiResult', 'Failed: ' + (err.message || err), 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'Test API connection'; }
+    });
+    $('testOpencodeGo').addEventListener('click', async () => {
+      const btn = $('testOpencodeGo');
+      const apiKey = $('opencodeGoApiKey').value.trim();
+      const baseUrl = $('opencodeGoBaseUrl').value.trim() || OPENCODE_GO_DEFAULT_BASE_URL;
+      if (!apiKey) { setHint('testOpencodeGoResult', 'Enter your OpenCode Go API key first.', 'error'); return; }
+      btn.disabled = true; btn.textContent = 'Testing…'; setHint('testOpencodeGoResult', 'Verifying…', '');
+      try {
+        const res = await window.clicky.testOpenCodeGoKey(apiKey, baseUrl);
+        if (res && res.ok) {
+          const models = res.models || [];
+          const visionCount = models.filter((id) => opencodeGoVision(id) === 'vision').length;
+          setHint('testOpencodeGoResult', `Connected · ${models.length} model${models.length === 1 ? '' : 's'} (${visionCount} can see your screen).`, 'ok');
+          S = await window.clicky.getSettings();
+          renderOpencodeGoModelDropdown($('opencodeGoModel').value || OPENCODE_GO_DEFAULT_MODEL, S.opencodeGoModelList || []);
+        } else { setHint('testOpencodeGoResult', (res && res.error) || 'Test failed.', 'error'); }
+      } catch (err) { setHint('testOpencodeGoResult', 'Failed: ' + (err.message || err), 'error'); }
       finally { btn.disabled = false; btn.textContent = 'Test API connection'; }
     });
     function setHint(id, msg, kind) { const el = $(id); el.className = 'hint ' + (kind || ''); el.textContent = msg; }

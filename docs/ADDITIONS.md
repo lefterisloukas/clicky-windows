@@ -6,6 +6,45 @@ unless otherwise noted). Newest entries go at the top.
 
 ---
 
+## 2026-06-24
+
+### feat/opencode-go-provider — add OpenCode Go as an AI provider (vision-aware)
+**Branch:** `feat/opencode-go-provider`
+**Components:** `src/services/opencode-go-chat.ts` (new), `src/main/settings.ts`,
+`src/main/companion.ts`, `src/main/index.ts`, `src/preload/index.ts`,
+`src/renderer/settings/index.html`, `src/renderer/chat/index.html`
+
+Adds **OpenCode Go** — a low-cost OpenAI-compatible gateway
+(`https://opencode.ai/zen/go/v1`) fronting a curated set of open coding models
+(GLM, Kimi, Qwen, MiniMax, MiMo, DeepSeek) — as a fifth AI provider alongside
+Anthropic, OpenAI, OpenRouter, and Gemini.
+
+- **New service** `OpenCodeGoChatService`, cloned from the OpenRouter
+  (OpenAI-compatible) template: bare model ids, `Authorization: Bearer` auth,
+  `image_url` vision blocks, `readSSE` streaming. It reads `content` /
+  `delta.content` **only** — these models stream chain-of-thought in a separate
+  `reasoning_content` field, which we deliberately drop so it never reaches
+  POINT-tag parsing or TTS.
+- **Vision is the catch.** OpenCode Go is code-focused and **most of its models
+  are text-only.** The integration ships an empirically-verified capability
+  snapshot (`OPENCODE_GO_CAPS`): each `vision: true` model was probed against the
+  **live** Go endpoint with a synthetic image and confirmed to actually read it;
+  the text-only ones were confirmed not to (`deepseek-v4-pro` hard-400s on image
+  content, `glm-5.2` returns empty). The 9 verified vision models:
+  `kimi-k2.7-code`, `kimi-k2.6`, `kimi-k2.5`, `qwen3.7-plus`, `qwen3.6-plus`,
+  `qwen3.5-plus`, `minimax-m3`, `mimo-v2.5`, `mimo-v2-omni`.
+- **Settings UI** fetches the live model list via `GET /v1/models` on "Test API
+  connection" (the endpoint carries no capability data), then badges every model
+  **vision / text-only / vision?** (unknown), sorts vision-capable first, and
+  warns when a non-vision model is selected. The vision sets are mirrored in the
+  renderer; keep them in sync with `OPENCODE_GO_CAPS`.
+- **Reasoning** uses a gated `reasoning_effort` dropdown (off/low/med/high) like
+  the OpenAI provider, clamped per-model via the snapshot. NOTE: today none of
+  the *vision* models expose an effort scale (8/9 have none; `minimax-m3` is
+  on/off only), so the control is effectively inert for them — kept for
+  correctness and future models. These models reason by default, which adds
+  latency that can't currently be suppressed.
+
 ## 2026-06-21
 
 ### feat/spark-idle-only — no spark flash on mic-release; no empty caption pill
