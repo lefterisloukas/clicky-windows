@@ -635,15 +635,12 @@ app.whenReady().then(() => {
 
   setupIPC();
 
-  createTray(
-    {
-      onChat: () => openChatWindow(),
-      onSettings: () => showPopover(),
-      onToggle: () => togglePopover(),
-      onQuit: () => app.quit(),
-    },
-    settings
-  );
+  createTray({
+    onChat: () => openChatWindow(),
+    onSettings: () => showPopover(),
+    onToggle: () => togglePopover(),
+    onQuit: () => app.quit(),
+  });
 
   const hotkeyManager = new HotkeyManager(settings, ensureChatReady);
   hotkeyManager.register();
