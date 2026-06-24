@@ -916,7 +916,7 @@
 
     // Provider label shown in the titlebar once configured. Model and key
     // configuration now live entirely in the settings window.
-    const providerLabels = { anthropic: 'Claude', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini' };
+    const providerLabels = { anthropic: 'Claude', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini', 'opencode-go': 'OpenCode Go' };
     let currentProvider = 'anthropic';
 
     let isConfigured = false;
@@ -928,7 +928,7 @@
     function refreshConfiguredState() {
       return window.clicky.getSettings().then((settings) => {
         currentProvider = settings.aiProvider || 'anthropic';
-        const hasKey = settings.anthropicApiKey || settings.openaiApiKey || settings.openrouterApiKey || settings.geminiApiKey;
+        const hasKey = settings.anthropicApiKey || settings.openaiApiKey || settings.openrouterApiKey || settings.geminiApiKey || settings.opencodeGoApiKey;
         setConfigured(!!hasKey);
       }).catch((err) => {
         console.error('Failed to load settings:', err);

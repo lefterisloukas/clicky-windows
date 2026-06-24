@@ -21,6 +21,52 @@ const GROQ_DEFAULT_STT_MODEL = "whisper-large-v3-turbo";
 const GEMINI_DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com";
 const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash";
 
+const OPENCODE_GO_DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1";
+
+/**
+ * Hit OpenCode Go's OpenAI-compatible GET /models endpoint and return the live
+ * model ids. The endpoint carries no capability data (id/object/created/owned_by
+ * only), so vision/reasoning badging is done in the renderer from the bundled
+ * capability snapshot. Mirrors fetchGroqModels.
+ */
+async function fetchOpenCodeGoModels(
+  apiKey: string,
+  baseUrl?: string
+): Promise<{ ok: boolean; error?: string; models?: string[] }> {
+  if (!apiKey) {
+    return { ok: false, error: "OpenCode Go API key is empty" };
+  }
+  if (baseUrl && !baseUrl.startsWith("https://")) {
+    return { ok: false, error: "Custom base URL must start with https://" };
+  }
+  const root = (baseUrl || OPENCODE_GO_DEFAULT_BASE_URL).replace(/\/+$/, "");
+  try {
+    const response = await fetch(`${root}/models`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      return {
+        ok: false,
+        error: `OpenCode Go returned ${response.status}: ${body.slice(0, 200)}`,
+      };
+    }
+    const data = (await response.json()) as { data?: Array<{ id?: string }> };
+    const seen = new Set<string>();
+    const models: string[] = [];
+    for (const m of data.data || []) {
+      if (typeof m.id === "string" && !seen.has(m.id)) {
+        seen.add(m.id);
+        models.push(m.id);
+      }
+    }
+    return { ok: true, models };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `Could not reach OpenCode Go: ${msg}` };
+  }
+}
+
 /**
  * Hit Gemini's REST list-models endpoint and return the models that support
  * generateContent (i.e. usable for chat/vision). Dedupes and pins the default
@@ -509,6 +555,20 @@ function setupIPC(): void {
       if (result.ok && result.models) {
         settings.set("geminiModelList", result.models);
         settings.set("geminiModelListFetchedAt", Date.now());
+      }
+      return result;
+    }
+  );
+
+  // Verify an OpenCode Go API key by hitting GET /models. On success, refresh
+  // the cached model list (raw live ids; vision badging happens in the UI).
+  ipcMain.handle(
+    "settings:testOpenCodeGoKey",
+    async (_event, apiKey: string, baseUrl?: string) => {
+      const result = await fetchOpenCodeGoModels(apiKey, baseUrl);
+      if (result.ok && result.models) {
+        settings.set("opencodeGoModelList", result.models);
+        settings.set("opencodeGoModelListFetchedAt", Date.now());
       }
       return result;
     }

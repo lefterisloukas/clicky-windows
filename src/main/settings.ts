@@ -35,11 +35,19 @@ interface SettingsSchema {
   pushToTalkHotkey: string;
 
   // AI Provider
-  aiProvider: "anthropic" | "openai" | "openrouter" | "gemini";
+  aiProvider: "anthropic" | "openai" | "openrouter" | "gemini" | "opencode-go";
   claudeModel: string;
   openaiModel: string;
   openaiReasoning: "off" | "low" | "medium" | "high";
   openrouterModel: string;
+
+  // OpenCode Go (OpenAI-compatible gateway; most models are text-only)
+  opencodeGoApiKey: string;
+  opencodeGoBaseUrl: string;
+  opencodeGoModel: string;
+  opencodeGoReasoning: "off" | "low" | "medium" | "high";
+  opencodeGoModelList: string[];
+  opencodeGoModelListFetchedAt: number;
 
   // Google Gemini
   geminiApiKey: string;
@@ -95,6 +103,12 @@ const defaults: SettingsSchema = {
   openaiModel: "gpt-4o",
   openaiReasoning: "off",
   openrouterModel: "anthropic/claude-sonnet-4-5",
+  opencodeGoApiKey: "",
+  opencodeGoBaseUrl: "",
+  opencodeGoModel: "qwen3.7-plus",
+  opencodeGoReasoning: "off",
+  opencodeGoModelList: [],
+  opencodeGoModelListFetchedAt: 0,
   geminiApiKey: "",
   geminiBaseUrl: "",
   geminiModel: "gemini-3.5-flash",
