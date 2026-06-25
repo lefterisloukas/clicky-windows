@@ -3,30 +3,38 @@
 <head>
   <meta charset="UTF-8">
   <title>Clicky</title>
+  <script>
+    // Stamp the theme main passed via ?theme=… BEFORE the stylesheet applies,
+    // so the first paint is already the right theme (no flash-of-default).
+    if (window.clicky) window.clicky.applyTheme(new URLSearchParams(location.search).get('theme'));
+  </script>
+  <link rel="stylesheet" href="../theme.css">
   <style>
+    /* Semantic role tokens (--bg --surface --surface-2 --text --muted --border
+       --border-strong --accent --accent-hover --on-accent --ok --danger …) come
+       from ../theme.css and remap with data-theme/data-mode on <html>. The names
+       below are local aliases the rest of this window's CSS already references;
+       the ones that collide with role names (--surface, --surface-2, --text,
+       --muted, --accent) are intentionally NOT redefined here so they inherit
+       the role values directly. */
     :root {
-      --ground: #0e1117;
-      --surface: #171b24;
-      --surface-2: #1f2430;
-      --surface-3: #262c3a;
-      --line: #2a3140;
-      --line-2: #343b4b;
-      --text: #e6e9f0;
-      --muted: #8b93a7;
-      --faint: #5b6478;
-      --accent: #638cff;
-      --accent-2: #a78bfa;
-      --good: #4ade80;
-      --bad: #fb7185;
+      --ground: var(--bg);
+      --surface-3: var(--surface-2);
+      --line: var(--border);
+      --line-2: var(--border-strong);
+      --faint: color-mix(in srgb, var(--muted) 70%, transparent);
+      --accent-2: var(--accent-hover);
+      --good: var(--ok);
+      --bad: var(--danger);
       --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
       --mono: ui-monospace, "Cascadia Code", "Cascadia Mono", Consolas, monospace;
-      --grad: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+      --grad: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; }
     body {
       font-family: var(--sans);
-      background: linear-gradient(180deg, #1c2230, #161a23);
+      background: var(--bg);
       color: var(--text);
       font-size: 13px;
       -webkit-font-smoothing: antialiased;
@@ -51,12 +59,12 @@
     .pop-h .winx { width: 24px; height: 22px; display: grid; place-items: center; border: none;
       background: none; color: var(--faint); border-radius: 6px; cursor: pointer; font-family: var(--mono);
       font-size: 13px; line-height: 1; margin-left: 2px; transition: background .12s, color .12s; }
-    .pop-h .winx:hover { background: #7f1d2e; color: #fff; }
+    .pop-h .winx:hover { background: var(--danger); color: #fff; }
 
     /* glance strip */
     .senses { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line);
       border-bottom: 1px solid var(--line); flex: none; }
-    .sense { background: #181d28; padding: 9px 6px; text-align: center; overflow: hidden; }
+    .sense { background: var(--surface); padding: 9px 6px; text-align: center; overflow: hidden; }
     .sense .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; color: var(--accent-2); }
     .sense .v { font-size: 12px; font-weight: 650; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sense .s { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -105,10 +113,11 @@
     .seg { display: grid; gap: 4px; background: var(--ground); border-radius: 8px; padding: 3px; }
     .seg.c4 { grid-template-columns: repeat(4, 1fr); }
     .seg.c5 { grid-template-columns: repeat(5, 1fr); }
+    .seg.c2x2 { grid-template-columns: repeat(2, 1fr); }
     .seg button { font: inherit; font-size: 10.5px; border: none; background: transparent; color: var(--muted);
       padding: 7px 0; border-radius: 6px; cursor: pointer; }
     .seg button:hover { color: var(--text); }
-    .seg button.on { background: var(--grad); color: #0c1322; font-weight: 700; }
+    .seg button.on { background: var(--grad); color: var(--on-accent); font-weight: 700; }
 
     /* inputs / selects */
     select, input[type="text"], input[type="password"], input[type="number"] {
@@ -117,8 +126,8 @@
     input, select, textarea { user-select: text; }
     select { cursor: pointer; }
     select:focus, input:focus { border-color: var(--accent); }
-    select option { background: #12121e; color: var(--text); }
-    select optgroup { background: #12121e; color: #cfcfe0; font-weight: 600; font-style: normal; }
+    select option { background: var(--surface); color: var(--text); }
+    select optgroup { background: var(--surface); color: var(--muted); font-weight: 600; font-style: normal; }
     input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
 
     .test { margin-top: 8px; padding: 7px 12px; background: var(--surface-3); color: var(--text);
@@ -141,11 +150,11 @@
     .sw .ic { width: 16px; color: var(--accent-2); flex: none; text-align: center; }
     .sw .lbl { flex: 1; }
     .sw .lbl small { display: block; color: var(--faint); font-size: 10.5px; }
-    .sw .track { width: 36px; height: 20px; border-radius: 999px; background: var(--surface-3);
-      border: 1px solid var(--line); position: relative; flex: none; cursor: pointer; transition: background .2s; }
+    .sw .track { width: 36px; height: 20px; border-radius: 999px; background: var(--border-strong);
+      border: 1px solid var(--border); position: relative; flex: none; cursor: pointer; transition: background .2s; }
     .sw .track.on { background: var(--accent); border-color: transparent; }
     .sw .track i { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
-      background: #fff; transition: left .2s; }
+      background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25); transition: left .2s; }
     .sw .track.on i { left: 18px; }
     /* Sub-option nested under the row above it (e.g. caption follow-cursor). */
     .sw.sub { padding-left: 26px; padding-top: 2px; }
@@ -381,6 +390,25 @@
           </div>
         </div>
       </div>
+
+      <div class="grp-label">Appearance</div>
+
+      <!-- Theme -->
+      <div class="arow" data-acc>
+        <button class="top"><span class="ic">◐</span><span class="nm">Theme</span><span class="val"><span class="vt" id="valTheme">—</span><span class="car">▾</span></span></button>
+        <div class="body">
+          <div class="nest">
+            <div class="nlabel">Color &amp; appearance</div>
+            <div class="seg c2x2" id="segTheme">
+              <button data-value="sky-light">Sky Light</button>
+              <button data-value="sky-dark">Sky Dark</button>
+              <button data-value="rose-light">Rose Light</button>
+              <button data-value="rose-dark">Rose Dark</button>
+              <button data-value="vibe-spark" style="grid-column: 1 / -1">⚡ Vibe Spark</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -415,6 +443,14 @@
     let S = {}; // settings cache
 
     const PROVIDER_LABEL = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini', 'opencode-go': 'OpenCode Go' };
+    const THEME_LABEL = { 'sky-light': 'Sky · Light', 'sky-dark': 'Sky · Dark', 'rose-light': 'Rose · Light', 'rose-dark': 'Rose · Dark', 'vibe-spark': 'Vibe Spark' };
+    // Theme is applied via window.clicky.applyTheme (validated, shared by all
+    // windows — see src/preload/index.ts). markTheme also updates the picker UI.
+    function markTheme(theme) {
+      window.clicky.applyTheme(theme);
+      markSegmented('segTheme', theme);
+      $('valTheme').textContent = THEME_LABEL[theme] || theme;
+    }
     const MODELHOST_LABEL = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini', 'opencode-go': 'OpenCode Go' };
     const STT_LABEL = { groq: 'Groq', openai: 'Whisper', assemblyai: 'AssemblyAI', 'whisper-local': 'Local' };
     const TTS_LABEL = { off: 'Off', local: 'Windows', kokoro: 'Kokoro', openai: 'OpenAI', elevenlabs: 'ElevenLabs' };
@@ -608,6 +644,9 @@
       ['alwaysOnTop','cursorBuddyEnabled','overlayCaptionEnabled','overlayCaptionFollowCursor','hipaaMode'].forEach((k) => $(k).classList.toggle('on', !!S[k]));
       syncFollowCursorRow();
 
+      // theme
+      markTheme(S.theme || 'sky-light');
+
       refreshAll();
 
       // auto-refresh Groq model list if stale
@@ -650,6 +689,14 @@
     setupSegmented('segOpenaiReasoning', (v) => save('openaiReasoning', v));
     setupSegmented('segGeminiReasoning', (v) => save('geminiReasoning', v));
     setupSegmented('segOpencodeGoReasoning', (v) => save('opencodeGoReasoning', v));
+    // setupSegmented already highlights the clicked button instantly; save()
+    // broadcasts settings:theme-changed back to THIS window too, so the
+    // onThemeChanged handler below is what applies the theme and updates the
+    // label. Don't duplicate that work here.
+    setupSegmented('segTheme', (v) => save('theme', v));
+
+    // Live theme updates broadcast from main (e.g. changed in another window).
+    window.clicky.onThemeChanged(({ theme }) => markTheme(theme));
 
     // ---- field listeners (write on change) ----
     function onChange(id, key, transform) {

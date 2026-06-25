@@ -65,6 +65,9 @@ interface SettingsSchema {
   overlayCaptionFollowCursor: boolean;
   popoverWidth: number;
   popoverHeight: number;
+  // Flat theme identity — one name per theme, coupled to nothing, so new
+  // themes are added without a brand/mode axis. See src/renderer/theme.css.
+  theme: "sky-light" | "sky-dark" | "rose-light" | "rose-dark" | "vibe-spark";
 
   // HIPAA
   hipaaMode: boolean;
@@ -98,6 +101,7 @@ const defaults: SettingsSchema = {
   overlayCaptionFollowCursor: true,
   popoverWidth: 380,
   popoverHeight: 600,
+  theme: "sky-light",
   aiProvider: "anthropic",
   claudeModel: "claude-sonnet-4-5-20250929",
   openaiModel: "gpt-4o",
