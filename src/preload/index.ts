@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+// The preload runs in the renderer's DOM context, but the project's single
+// tsconfig targets the main process (no "dom" lib). Declare just the one DOM
+// global applyTheme touches, rather than widening the lib for all of src/.
+declare const document: { documentElement: { dataset: { theme: string } } };
+
 contextBridge.exposeInMainWorld("clicky", {
   // Hotkey events
   onRecordingChanged: (callback: (isRecording: boolean) => void) => {
@@ -116,6 +121,24 @@ contextBridge.exposeInMainWorld("clicky", {
   getSettings: () => ipcRenderer.invoke("settings:getAll"),
   setSetting: (key: string, value: unknown) =>
     ipcRenderer.invoke("settings:set", key, value),
+
+  // Theme — single source of truth for the renderer side. The valid theme
+  // names live here (one list, shared by all three windows) and theme.css
+  // defines a [data-theme="<name>"] block for each. applyTheme validates the
+  // value and falls back to the default on anything unknown, so a stale or
+  // hand-edited setting can never leave a window on a selector that matches
+  // nothing (which would silently render bare :root).
+  THEMES: ["sky-light", "sky-dark", "rose-light", "rose-dark", "vibe-spark"],
+  applyTheme: (theme: string | null | undefined) => {
+    const known = ["sky-light", "sky-dark", "rose-light", "rose-dark", "vibe-spark"];
+    document.documentElement.dataset.theme =
+      theme && known.includes(theme) ? theme : "sky-light";
+  },
+  // Fires on every window when the theme setting changes, so chat / settings /
+  // overlay all retint live.
+  onThemeChanged: (callback: (data: { theme: string }) => void) => {
+    ipcRenderer.on("settings:theme-changed", (_event, data) => callback(data));
+  },
 
   // Groq: verify API key + refresh the cached Whisper model list
   testGroqKey: (

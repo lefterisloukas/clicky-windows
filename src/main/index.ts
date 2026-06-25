@@ -251,7 +251,11 @@ function createOverlayWindow(display: Electron.Display, displayIndex: number): B
 
   win.setIgnoreMouseEvents(true, { forward: true });
   win.setAlwaysOnTop(true, "screen-saver");
-  win.loadFile(path.join(__dirname, "..", "..", "src", "renderer", "overlay", "index.html"));
+  // Pass the current theme as a query param so the renderer can stamp
+  // data-theme before first paint — no flash-of-default before settings load.
+  win.loadFile(path.join(__dirname, "..", "..", "src", "renderer", "overlay", "index.html"), {
+    query: { theme: settings.get("theme") },
+  });
 
   // Forward overlay renderer console messages to main process so we can see
   // them in PowerShell during dev. Prefixed with the display index for
@@ -324,7 +328,10 @@ function createChatWindow(): BrowserWindow {
     },
   });
 
-  win.loadFile(path.join(__dirname, "..", "..", "src", "renderer", "chat", "index.html"));
+  // Theme as a query param → renderer stamps data-theme before first paint.
+  win.loadFile(path.join(__dirname, "..", "..", "src", "renderer", "chat", "index.html"), {
+    query: { theme: settings.get("theme") },
+  });
   return win;
 }
 
@@ -364,7 +371,10 @@ function createPopover(): BrowserWindow {
     },
   });
 
-  win.loadFile(path.join(__dirname, "..", "..", "src", "renderer", "settings", "index.html"));
+  // Theme as a query param → renderer stamps data-theme before first paint.
+  win.loadFile(path.join(__dirname, "..", "..", "src", "renderer", "settings", "index.html"), {
+    query: { theme: settings.get("theme") },
+  });
   // Dismiss when focus leaves the popover (clicking anywhere else).
   win.on("blur", () => {
     if (!win.isDestroyed() && win.isVisible()) {
@@ -519,6 +529,16 @@ function setupIPC(): void {
     if (key === "ttsProvider" || key === "ttsEnabled" || key === "kokoroQuality") {
       maybePrewarmKokoro();
     }
+
+    // Theme changes apply live across every open window (chat, settings, overlay).
+    if (key === "theme") {
+      const payload = { theme: settings.get("theme") };
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (win && !win.isDestroyed()) {
+          win.webContents.send("settings:theme-changed", payload);
+        }
+      }
+    }
   });
 
   // Shared helper: fetch + cache Groq model list. Used by both the test-key
@@ -620,7 +640,31 @@ function maybePrewarmKokoro(): void {
   }
 }
 
+// Single-instance lock. This is a tray app: window-all-closed never quits it
+// (see below), so without this a second launch — or a stale instance left
+// running in the tray from a previous run — stacks a WHOLE second instance:
+// a duplicate tray icon, a second set of per-monitor overlays, and a global
+// hotkey registered twice. Acquire the lock at load; the non-primary instance
+// bails out in whenReady, and the primary surfaces its UI instead.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+
+app.on("second-instance", () => {
+  // Another launch was attempted — bring the already-running instance forward
+  // instead of letting a second copy start. Surface the chat window (what a
+  // user re-launching the app most likely wants), not the settings popover.
+  // Ignore if it fires before bootstrap finishes (app not ready yet → no
+  // windows/tray to show, and creating one pre-ready would throw).
+  if (app.isReady()) {
+    openChatWindow();
+  }
+});
+
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) {
+    app.quit();
+    return;
+  }
+
   // Hide from taskbar — tray only
   app.dock?.hide?.();
 
@@ -669,6 +713,19 @@ app.whenReady().then(() => {
   startCursorBuddy();
 
   console.log("Clicky Windows started — running in system tray");
+});
+
+// The overlay windows are created with `closable: false` (so Alt+F4 / stray
+// close calls can't kill them). But `app.quit()` quits by calling `.close()`
+// on every window, and a non-closable window silently IGNORES `.close()` — so
+// without this the overlays never close and quit stalls forever (the app stays
+// stuck in the tray; only Ctrl+C / SIGINT actually kills it). `.destroy()`
+// bypasses `closable` and tears the window down unconditionally.
+app.on("before-quit", () => {
+  for (const win of overlayWindows) {
+    if (win && !win.isDestroyed()) win.destroy();
+  }
+  overlayWindows = [];
 });
 
 app.on("will-quit", () => {

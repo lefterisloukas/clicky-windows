@@ -3,27 +3,35 @@
 <head>
   <meta charset="UTF-8">
   <title>Clicky</title>
+  <script>
+    // Stamp the theme main passed via ?theme=… BEFORE the stylesheet applies,
+    // so the first paint is already the right theme (no flash-of-default).
+    if (window.clicky) window.clicky.applyTheme(new URLSearchParams(location.search).get('theme'));
+  </script>
+  <link rel="stylesheet" href="../theme.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
+    /* Semantic role tokens (--bg --surface --text --muted --accent …) come from
+       ../theme.css and remap with data-theme on <html>. The names below are local
+       aliases the rest of this window already references; the ones that collide
+       with role names (--border, --accent, --accent-hover) are intentionally NOT
+       redefined here so they inherit the role values directly. */
     :root {
-      --bg-primary: #0a0a0f;
-      --bg-secondary: rgba(255, 255, 255, 0.04);
-      --bg-tertiary: rgba(255, 255, 255, 0.06);
-      --bg-hover: rgba(255, 255, 255, 0.08);
-      --border: rgba(255, 255, 255, 0.08);
-      --border-focus: rgba(99, 140, 255, 0.5);
-      --text-primary: #f0f0f5;
-      --text-secondary: rgba(255, 255, 255, 0.55);
-      --text-tertiary: rgba(255, 255, 255, 0.3);
-      --accent: #638cff;
-      --accent-hover: #7da0ff;
-      --accent-glow: rgba(99, 140, 255, 0.15);
-      --success: #34d399;
-      --error: #f87171;
-      --msg-user: linear-gradient(135deg, #638cff 0%, #5a7af5 100%);
-      --msg-assistant: rgba(255, 255, 255, 0.05);
+      --bg-primary: var(--bg);
+      --bg-secondary: var(--surface);
+      --bg-tertiary: var(--surface-2);
+      --bg-hover: color-mix(in srgb, var(--text) 8%, transparent);
+      --border-focus: var(--focus-ring);
+      --text-primary: var(--text);
+      --text-secondary: var(--muted);
+      --text-tertiary: color-mix(in srgb, var(--muted) 60%, transparent);
+      --accent-glow: var(--cursor-glow);
+      --success: var(--ok);
+      --error: var(--danger);
+      --msg-user: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+      --msg-assistant: var(--surface-2);
       --radius-sm: 8px;
       --radius-md: 12px;
       --radius-lg: 16px;
@@ -47,7 +55,7 @@
     #titlebar {
       height: 48px;
       padding: 0 16px;
-      background: rgba(255, 255, 255, 0.02);
+      background: color-mix(in srgb, var(--surface) 45%, transparent);
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
@@ -64,7 +72,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      filter: drop-shadow(0 2px 6px rgba(99, 140, 255, 0.4));
+      filter: drop-shadow(0 2px 6px var(--cursor-glow));
     }
 
     #titlebar .logo svg {
@@ -138,14 +146,14 @@
     }
 
     .win-btn.close:hover {
-      background: rgba(248, 113, 113, 0.2);
+      background: color-mix(in srgb, var(--danger) 20%, transparent);
       color: var(--error);
     }
 
     /* ── Setup Panel ── */
     #setup {
       padding: 20px;
-      background: rgba(255, 255, 255, 0.02);
+      background: color-mix(in srgb, var(--surface) 45%, transparent);
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
       animation: slideDown 0.3s ease;
@@ -194,8 +202,8 @@
       font-weight: 600;
     }
 
-    .badge.required { background: rgba(248, 113, 113, 0.15); color: var(--error); }
-    .badge.optional { background: rgba(255, 255, 255, 0.06); color: var(--text-tertiary); }
+    .badge.required { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--error); }
+    .badge.optional { background: var(--bg-tertiary); color: var(--text-tertiary); }
 
     .key-group input {
       width: 100%;
@@ -219,8 +227,8 @@
     }
 
     .key-group input.error {
-      border-color: rgba(248, 113, 113, 0.5);
-      box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.1);
+      border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 10%, transparent);
     }
 
     .setup-footer {
@@ -283,7 +291,7 @@
     #messages::-webkit-scrollbar { width: 4px; }
     #messages::-webkit-scrollbar-track { background: transparent; }
     #messages::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.1);
+      background: color-mix(in srgb, var(--text) 18%, transparent);
       border-radius: 4px;
     }
 
@@ -358,16 +366,16 @@
     }
 
     .msg.assistant code {
-      background: rgba(255, 255, 255, 0.08);
+      background: color-mix(in srgb, var(--text) 10%, transparent);
       padding: 1px 5px;
       border-radius: 4px;
       font-family: 'Cascadia Code', 'Consolas', 'SF Mono', monospace;
       font-size: 12px;
-      color: #e2b3ff;
+      color: var(--accent);
     }
 
     .msg.assistant pre {
-      background: rgba(0, 0, 0, 0.3);
+      background: color-mix(in srgb, var(--text) 10%, transparent);
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 8px 10px;
@@ -414,7 +422,7 @@
     }
 
     .msg.assistant th {
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--surface-2);
       font-weight: 600;
     }
 
@@ -445,7 +453,7 @@
     /* ── Input Area ── */
     #input-area {
       padding: 14px 16px;
-      background: rgba(255, 255, 255, 0.02);
+      background: color-mix(in srgb, var(--surface) 45%, transparent);
       border-top: 1px solid var(--border);
       display: flex;
       gap: 10px;
@@ -493,7 +501,7 @@
 
     #send:hover {
       background: var(--accent-hover);
-      box-shadow: 0 2px 12px rgba(99, 140, 255, 0.4);
+      box-shadow: 0 2px 12px var(--cursor-glow);
       transform: scale(1.05);
     }
 
@@ -521,9 +529,9 @@
     }
 
     .mic-btn.recording {
-      background: rgba(239, 68, 68, 0.15);
-      border-color: rgba(239, 68, 68, 0.5);
-      color: #ef4444;
+      background: color-mix(in srgb, var(--record) 15%, transparent);
+      border-color: color-mix(in srgb, var(--record) 50%, transparent);
+      color: var(--record);
       animation: micPulse 1.5s ease-in-out infinite;
     }
 
@@ -555,16 +563,16 @@
       font-weight: 500;
       color: var(--text-secondary);
       border-top: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.02);
+      background: color-mix(in srgb, var(--surface) 45%, transparent);
       animation: statusIn 0.2s ease;
     }
 
     .status-bar.hidden { display: none; }
 
     .status-bar.recording {
-      color: #ef4444;
-      background: rgba(239, 68, 68, 0.05);
-      border-top-color: rgba(239, 68, 68, 0.15);
+      color: var(--record);
+      background: color-mix(in srgb, var(--record) 5%, transparent);
+      border-top-color: color-mix(in srgb, var(--record) 15%, transparent);
     }
 
     .status-bar.thinking {
@@ -653,7 +661,7 @@
       align-items: center;
       justify-content: center;
       margin-bottom: 4px;
-      filter: drop-shadow(0 4px 20px rgba(99, 140, 255, 0.4));
+      filter: drop-shadow(0 4px 20px var(--cursor-glow));
     }
 
     .welcome .icon svg {
@@ -716,7 +724,7 @@
 
     .help-link:hover {
       background: var(--bg-hover);
-      border-color: rgba(255, 255, 255, 0.12);
+      border-color: var(--border);
       color: var(--text-primary);
     }
 
@@ -734,7 +742,7 @@
       position: absolute;
       top: 48px;
       right: 12px;
-      background: #161620;
+      background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
       padding: 6px;
@@ -924,7 +932,8 @@
 
     // Load existing settings — chat only needs the configured/connected state
     // and the active provider label. All keys/models are configured in the
-    // settings window now.
+    // settings window now. (The theme is stamped pre-paint in <head> from the
+    // ?theme= query param, then kept current by onThemeChanged below.)
     function refreshConfiguredState() {
       return window.clicky.getSettings().then((settings) => {
         currentProvider = settings.aiProvider || 'anthropic';
@@ -936,6 +945,9 @@
       });
     }
     refreshConfiguredState();
+
+    // Live theme updates broadcast from main (changed in the settings window).
+    window.clicky.onThemeChanged(({ theme }) => window.clicky.applyTheme(theme));
 
     // Gear button + first-run CTA both open the single settings window.
     openSettingsBtn.addEventListener('click', () => window.clicky.openSettings());

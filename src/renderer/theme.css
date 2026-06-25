@@ -1,0 +1,183 @@
+/* ── Color — Clicky theme system ─────────────────────────────
+   Each theme is a single flat identity set with ONE attribute on
+   <html> (or any wrapper):
+
+     <html data-theme="sky-light">    ← default
+     <html data-theme="sky-dark">
+     <html data-theme="rose-light">
+     <html data-theme="rose-dark">
+
+   Bare :root (no attribute) === sky-light, so the app is themed even
+   before JS runs.
+
+   The four shipping themes happen to be two brands (Sky/Rose) × two
+   modes (Light/Dark), but the STRUCTURE is intentionally flat — a
+   theme is one name, coupled to nothing. To add a theme later (a
+   high-contrast skin, a one-off, a brand with only one mode) just add
+   one more `[data-theme="<name>"]` block below with the role values;
+   it needs no brand or mode pairing.
+
+   Build against the SEMANTIC ROLES only (--bg, --surface, --text,
+   --muted, --accent, …). The raw hue ramps below are the source
+   values; never reference them directly in components — the whole
+   point is that swapping the theme remaps the roles in one place.
+
+   Role VALUES mirror claude.ai/design → "Clicky Design System" →
+   tokens/colors.css (that file keys them on data-theme + data-mode;
+   here they're flattened to one attribute). Keep the values in sync. */
+
+/* ===================================================================
+   RAW PALETTE  (source hues — do not use directly in components)
+   =================================================================== */
+:root {
+  /* Sky — cool blue */
+  --sky-accent-l:        #3D6BEE;   /* light-mode accent */
+  --sky-accent-l-hover:  #2F5BD8;
+  --sky-accent-d:        #5C86F5;   /* dark-mode accent (lifted for contrast) */
+  --sky-accent-d-hover:  #7DA0FF;
+  --sky-paper-l:         #EEF3FC;
+  --sky-text-l:          #1B2440;
+  --sky-muted-l:         #7C86A6;
+  --sky-border-l:        #E2E9F6;
+  --sky-ground-d:        #0E1320;   /* dark paper */
+  --sky-surface-d:       #161D2E;
+  --sky-surface2-d:      #1E2740;
+  --sky-text-d:          #EAEEF8;
+  --sky-muted-d:         #8A95B5;
+  --sky-border-d:        #28324A;
+  --sky-ok-l:            #2E9E6E;
+  --sky-ok-d:            #3FC68A;
+
+  /* Rose — warm pink */
+  --rose-accent-l:       #D24E7C;
+  --rose-accent-l-hover: #BC3E6B;
+  --rose-accent-d:       #E2618C;
+  --rose-accent-d-hover: #EC7DA1;
+  --rose-paper-l:        #F8EFEA;
+  --rose-text-l:         #2E2226;
+  --rose-muted-l:        #97847F;
+  --rose-border-l:       #F0E0DA;
+  --rose-ground-d:       #1A1216;
+  --rose-surface-d:      #241A1F;
+  --rose-surface2-d:     #2E2027;
+  --rose-text-d:         #F5EAEE;
+  --rose-muted-d:        #AD9690;
+  --rose-border-d:       #3A2A30;
+  --rose-ok-l:           #4F9E78;
+  --rose-ok-d:           #67B98D;
+
+  /* Shared status */
+  --danger-l:            #DB4B4B;
+  --danger-d:            #F87171;
+  --record:              #EF4444;   /* recording red — both modes */
+}
+
+/* ===================================================================
+   SEMANTIC ROLES  — build against THESE
+   Default (no attribute) = sky-light
+   =================================================================== */
+:root,
+[data-theme="sky-light"] {
+  --bg:            var(--sky-paper-l);   /* page / window paper */
+  --surface:       #FFFFFF;              /* raised card / window */
+  --surface-2:     #F4F7FD;             /* nested fill (input, row) */
+  --text:          var(--sky-text-l);   /* primary text */
+  --muted:         var(--sky-muted-l);  /* secondary text / labels */
+  --border:        var(--sky-border-l);
+  --border-strong: #CFDAF0;
+  --accent:        var(--sky-accent-l);
+  --accent-hover:  var(--sky-accent-l-hover);
+  --on-accent:     #FFFFFF;             /* text/icon on accent fill */
+  --ok:            var(--sky-ok-l);
+  --danger:        var(--danger-l);
+  --focus-ring:    rgba(61, 107, 238, 0.40);
+  /* cursor companion (spark / wave / thinking ring) */
+  --cursor:        var(--sky-accent-l);
+  --cursor-glow:   rgba(61, 107, 238, 0.45);
+  --cursor-halo:   rgba(255, 255, 255, 0.85); /* outline for visibility on any desktop */
+  color-scheme: light;
+}
+
+[data-theme="sky-dark"] {
+  --bg:            var(--sky-ground-d);
+  --surface:       var(--sky-surface-d);
+  --surface-2:     var(--sky-surface2-d);
+  --text:          var(--sky-text-d);
+  --muted:         var(--sky-muted-d);
+  --border:        var(--sky-border-d);
+  --border-strong: #36436A;
+  --accent:        var(--sky-accent-d);
+  --accent-hover:  var(--sky-accent-d-hover);
+  --on-accent:     #FFFFFF;
+  --ok:            var(--sky-ok-d);
+  --danger:        var(--danger-d);
+  --focus-ring:    rgba(92, 134, 245, 0.50);
+  --cursor:        var(--sky-accent-d);
+  --cursor-glow:   rgba(92, 134, 245, 0.55);
+  --cursor-halo:   rgba(8, 12, 22, 0.80);
+  color-scheme: dark;
+}
+
+[data-theme="rose-light"] {
+  --bg:            var(--rose-paper-l);
+  --surface:       #FFFFFF;
+  --surface-2:     #FCF4F0;
+  --text:          var(--rose-text-l);
+  --muted:         var(--rose-muted-l);
+  --border:        var(--rose-border-l);
+  --border-strong: #E6CBC2;
+  --accent:        var(--rose-accent-l);
+  --accent-hover:  var(--rose-accent-l-hover);
+  --on-accent:     #FFFFFF;
+  --ok:            var(--rose-ok-l);
+  --danger:        var(--danger-l);
+  --focus-ring:    rgba(210, 78, 124, 0.38);
+  --cursor:        var(--rose-accent-l);
+  --cursor-glow:   rgba(210, 78, 124, 0.45);
+  --cursor-halo:   rgba(255, 255, 255, 0.85);
+  color-scheme: light;
+}
+
+[data-theme="rose-dark"] {
+  --bg:            var(--rose-ground-d);
+  --surface:       var(--rose-surface-d);
+  --surface-2:     var(--rose-surface2-d);
+  --text:          var(--rose-text-d);
+  --muted:         var(--rose-muted-d);
+  --border:        var(--rose-border-d);
+  --border-strong: #4A3640;
+  --accent:        var(--rose-accent-d);
+  --accent-hover:  var(--rose-accent-d-hover);
+  --on-accent:     #FFFFFF;
+  --ok:            var(--rose-ok-d);
+  --danger:        var(--danger-d);
+  --focus-ring:    rgba(226, 97, 140, 0.50);
+  --cursor:        var(--rose-accent-d);
+  --cursor-glow:   rgba(226, 97, 140, 0.55);
+  --cursor-halo:   rgba(20, 12, 16, 0.80);
+  color-scheme: dark;
+}
+
+/* Vibe Spark — Clicky's original look, preserved as a theme: near-black paper,
+   electric-blue accent, and the signature cyan cursor spark it was named for.
+   A flat one-off (no light/dark pairing) — exactly the kind of theme the flat
+   structure exists to allow. */
+[data-theme="vibe-spark"] {
+  --bg:            #0A0A0F;
+  --surface:       #15151C;
+  --surface-2:     #1E1E28;
+  --text:          #F0F0F5;
+  --muted:         #8B93A7;
+  --border:        #2A2A36;
+  --border-strong: #3A3A48;
+  --accent:        #638CFF;
+  --accent-hover:  #7DA0FF;
+  --on-accent:     #FFFFFF;
+  --ok:            #34D399;
+  --danger:        #F87171;
+  --focus-ring:    rgba(99, 140, 255, 0.50);
+  --cursor:        #22D3EE;                  /* the cyan spark, the namesake */
+  --cursor-glow:   rgba(34, 211, 238, 0.45);
+  --cursor-halo:   rgba(255, 255, 255, 0.90);
+  color-scheme: dark;
+}

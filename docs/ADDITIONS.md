@@ -6,7 +6,97 @@ unless otherwise noted). Newest entries go at the top.
 
 ---
 
+## 2026-06-25
+
+### fix — tray "Quit" now actually exits the app
+**Branch:** `feat/themes`
+**Component:** `src/main/index.ts`
+
+Clicking **Quit** in the tray menu (or any path that calls `app.quit()`) did
+nothing — the app stayed resident in the tray and could only be killed with
+Ctrl+C / SIGINT on the dev process.
+
+**Root cause:** the per-monitor overlay windows are created with
+`closable: false` (so Alt+F4 / stray close calls can't kill them). But
+`app.quit()` quits by calling `.close()` on every open window, and a
+non-closable window *silently ignores* `.close()`. The overlays therefore
+never closed, and the quit sequence stalled indefinitely.
+
+**Fix:** added an `app.on("before-quit")` handler that `.destroy()`s every
+overlay window. `.destroy()` bypasses the `closable` guard (and skips the
+close event), tearing the windows down unconditionally so quit can complete.
+
+---
+
 ## 2026-06-24
+
+### feat/themes — semantic theme token system across all renderer windows
+**Branch:** `feat/themes`
+**Components:** `src/renderer/theme.css` (new), `src/main/settings.ts`,
+`src/main/index.ts`, `src/preload/index.ts`, `src/renderer/chat/index.html`,
+`src/renderer/settings/index.html`, `src/renderer/overlay/index.html`
+
+Replaces the single hardcoded dark look with a **five-theme** system: four
+ported from the **Clicky Design System** on claude.ai/design — **Sky Light**
+(default), Sky Dark, Rose Light, Rose Dark — plus **Vibe Spark**, the app's
+original near-black look (electric-blue accent, signature cyan cursor spark)
+kept as a selectable theme. All built on semantic role tokens.
+
+- **Flat theme identity, not a 2-axis model.** The design system keys its tokens
+  on `data-theme` (sky/rose) × `data-mode` (light/dark). We intentionally
+  **flattened** that to one attribute — `<html data-theme="sky-light|sky-dark|
+  rose-light|rose-dark">` — so a theme is a single name coupled to nothing.
+  Adding a future theme (a high-contrast skin, a one-off, a brand with only one
+  mode) is just one more `[data-theme="<name>"]` block in `theme.css`; it needs no
+  brand/mode pairing. Bare `:root` === `sky-light`, so the app is themed before JS.
+- **New shared stylesheet** `src/renderer/theme.css` is the single source of truth:
+  the raw hue ramps plus the semantic ROLES every window builds against (`--bg`,
+  `--surface`, `--surface-2`, `--text`, `--muted`, `--border`, `--border-strong`,
+  `--accent`, `--accent-hover`, `--on-accent`, `--ok`, `--danger`, `--focus-ring`,
+  `--cursor`, `--cursor-glow`, `--cursor-halo`, `--record`). Each window `<link>`s
+  it as the first stylesheet. Role VALUES mirror the design system's
+  `tokens/colors.css` — keep them in sync.
+- **Setting + live propagation.** A single `theme` setting (default `"sky-light"`)
+  in `settings.ts`. On change, `settings:set` broadcasts `settings:theme-changed`
+  to every window via `BrowserWindow.getAllWindows()`, so chat, settings, and
+  overlay all retint **live** with no restart.
+- **No flash, validated, centralized (post-review).** `applyTheme` lives once in
+  the preload (`window.clicky.applyTheme`) with the canonical theme-name list and
+  a fallback to `sky-light` on any unknown value — so a stale/hand-edited setting
+  can't strand a window on a non-matching selector. Main passes the current theme
+  as a `?theme=` query param at `loadFile`, and a tiny inline `<head>` script
+  stamps `data-theme` **before first paint** — no flash-of-default before settings
+  load. `onThemeChanged` keeps it live afterward.
+- **Settings UI** gains an "Appearance → Theme" accordion with a single 4-way
+  picker (Sky Light / Sky Dark / Rose Light / Rose Dark) modeled on the existing
+  segmented-control pattern.
+- **Per-window mapping.** Each window's existing local custom-property block was
+  rewired to derive from the roles; names that collide with role names
+  (`--surface`, `--text`, `--accent`, …) were dropped locally so they inherit
+  directly (aliasing `--surface: var(--surface)` would be circular). Remaining
+  hardcoded literals were converted to roles or `color-mix()` of a role.
+- **Overlay is fully themed (not a permanent dark HUD).** Pill/badge/caption follow
+  light/dark like the other windows; legibility over arbitrary desktops is carried
+  by strong borders + shadow and the `--cursor-halo` token (white in light themes,
+  dark in dark themes). The cursor spark, badge dot, and reply pill all retint.
+
+### fix(main) — single-instance lock (app was launching twice)
+**Branch:** `feat/themes`
+**Components:** `src/main/index.ts`
+
+The app could run as **two full instances at once**. It's a tray app —
+`window-all-closed` deliberately never quits it — and there was no
+`requestSingleInstanceLock`, so any second launch (or a stale instance still
+sitting in the tray from a previous run) stacked another complete instance:
+duplicate tray icon, a second set of per-monitor overlays, and the global
+push-to-talk hotkey registered twice.
+
+Fix: acquire `app.requestSingleInstanceLock()` at module load. The non-primary
+instance calls `app.quit()` and returns early in `whenReady`; the primary
+handles `second-instance` by surfacing the **chat window** (`openChatWindow()`,
+guarded on `app.isReady()` so it can't fire mid-bootstrap before the tray/windows
+exist). Verified: with one instance running, a second `electron .` exits
+immediately (code 0) and only one main process remains.
 
 ### feat/caption-follow-toggle-in-settings — move "Caption follows cursor" to settings
 **Branch:** `feat/caption-follow-toggle-in-settings`
