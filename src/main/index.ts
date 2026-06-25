@@ -715,6 +715,19 @@ app.whenReady().then(() => {
   console.log("Clicky Windows started — running in system tray");
 });
 
+// The overlay windows are created with `closable: false` (so Alt+F4 / stray
+// close calls can't kill them). But `app.quit()` quits by calling `.close()`
+// on every window, and a non-closable window silently IGNORES `.close()` — so
+// without this the overlays never close and quit stalls forever (the app stays
+// stuck in the tray; only Ctrl+C / SIGINT actually kills it). `.destroy()`
+// bypasses `closable` and tears the window down unconditionally.
+app.on("before-quit", () => {
+  for (const win of overlayWindows) {
+    if (win && !win.isDestroyed()) win.destroy();
+  }
+  overlayWindows = [];
+});
+
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
 });

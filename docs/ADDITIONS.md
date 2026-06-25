@@ -6,6 +6,28 @@ unless otherwise noted). Newest entries go at the top.
 
 ---
 
+## 2026-06-25
+
+### fix — tray "Quit" now actually exits the app
+**Branch:** `feat/themes`
+**Component:** `src/main/index.ts`
+
+Clicking **Quit** in the tray menu (or any path that calls `app.quit()`) did
+nothing — the app stayed resident in the tray and could only be killed with
+Ctrl+C / SIGINT on the dev process.
+
+**Root cause:** the per-monitor overlay windows are created with
+`closable: false` (so Alt+F4 / stray close calls can't kill them). But
+`app.quit()` quits by calling `.close()` on every open window, and a
+non-closable window *silently ignores* `.close()`. The overlays therefore
+never closed, and the quit sequence stalled indefinitely.
+
+**Fix:** added an `app.on("before-quit")` handler that `.destroy()`s every
+overlay window. `.destroy()` bypasses the `closable` guard (and skips the
+close event), tearing the windows down unconditionally so quit can complete.
+
+---
+
 ## 2026-06-24
 
 ### feat/themes — semantic theme token system across all renderer windows
