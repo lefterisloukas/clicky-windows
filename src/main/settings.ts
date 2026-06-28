@@ -72,6 +72,9 @@ interface SettingsSchema {
 
   // UI
   alwaysOnTop: boolean;
+  // When true, only the monitor the cursor is on is screenshotted and sent to
+  // the vision LLM (saves tokens on multi-monitor setups). Default off.
+  captureCurrentMonitorOnly: boolean;
   cursorBuddyEnabled: boolean;
   overlayCaptionEnabled: boolean;
   overlayCaptionFollowCursor: boolean;
@@ -108,6 +111,7 @@ const defaults: SettingsSchema = {
   kokoroQuality: "fast",
   pushToTalkHotkey: "Ctrl+Shift",
   alwaysOnTop: false,
+  captureCurrentMonitorOnly: false,
   cursorBuddyEnabled: true,
   overlayCaptionEnabled: true,
   overlayCaptionFollowCursor: true,

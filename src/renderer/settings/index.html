@@ -432,6 +432,7 @@
     <div class="sw"><span class="ic">✷</span><span class="lbl">Cursor glow<small>blue glow follows your pointer</small></span><span class="track" id="cursorBuddyEnabled"><i></i></span></div>
     <div class="sw"><span class="ic">💬</span><span class="lbl">Reply caption<small>stream the reply in a pill by the cursor</small></span><span class="track" id="overlayCaptionEnabled"><i></i></span></div>
     <div class="sw sub" id="followCursorRow"><span class="ic">↳</span><span class="lbl">Follow the cursor<small>the caption moves along with your pointer</small></span><span class="track" id="overlayCaptionFollowCursor"><i></i></span></div>
+    <div class="sw"><span class="ic">🖵</span><span class="lbl">Current monitor only<small>only screenshot the display your cursor is on (saves tokens)</small></span><span class="track" id="captureCurrentMonitorOnly"><i></i></span></div>
     <div class="sw"><span class="ic">⛨</span><span class="lbl">HIPAA mode<small>local processing only</small></span><span class="track" id="hipaaMode"><i></i></span></div>
   </div>
 
@@ -664,7 +665,7 @@
       renderOpencodeGoModelDropdown(S.opencodeGoModel || OPENCODE_GO_DEFAULT_MODEL, S.opencodeGoModelList || []);
 
       // toggles
-      ['alwaysOnTop','cursorBuddyEnabled','overlayCaptionEnabled','overlayCaptionFollowCursor','hipaaMode'].forEach((k) => $(k).classList.toggle('on', !!S[k]));
+      ['alwaysOnTop','cursorBuddyEnabled','overlayCaptionEnabled','overlayCaptionFollowCursor','captureCurrentMonitorOnly','hipaaMode'].forEach((k) => $(k).classList.toggle('on', !!S[k]));
       syncFollowCursorRow();
 
       // theme
@@ -752,6 +753,7 @@
       });
     }
     wireToggle('alwaysOnTop');
+    wireToggle('captureCurrentMonitorOnly');
     wireToggle('cursorBuddyEnabled');
     // "Follow the cursor" is a sub-option of "Reply caption" — grey it out and
     // make it inert while captions are off.
