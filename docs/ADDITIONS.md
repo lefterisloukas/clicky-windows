@@ -6,6 +6,34 @@ unless otherwise noted). Newest entries go at the top.
 
 ---
 
+## 2026-06-28
+
+### feat — Custom (OpenAI-compatible) AI provider
+**Branch:** `feat/custom-openai-compatible-provider`
+**Components:** `src/services/custom-chat.ts` (new), `src/main/settings.ts`,
+`src/main/companion.ts`, `src/renderer/settings/index.html`
+
+Adds a sixth AI provider, **Custom**, for any endpoint that speaks the OpenAI
+Chat Completions API — self-hosted gateways (vLLM, LiteLLM, Ollama's OpenAI
+shim), other vendors' compatible endpoints, etc. The user supplies:
+
+- **Base URL** (required) — `/chat/completions` is appended; trailing slashes
+  trimmed.
+- **Model name** (required) — free-text, since a custom endpoint can't be
+  enumerated (mirrors the OpenRouter model field).
+- **API key** (optional) — sent as `Authorization: Bearer …` only when present,
+  so keyless self-hosted endpoints work.
+- **Reasoning effort** (optional) — Off/Low/Med/High. Sent as `reasoning_effort`
+  only when not Off. Unlike the curated providers, there's no model-capability
+  table to gate on, so it's sent verbatim and the endpoint's error surfaces if
+  the model rejects it.
+
+`CustomChatService` is modeled on `OpenCodeGoChatService` (streaming + non-
+streaming, ignores `reasoning_content` so chain-of-thought never reaches POINT
+parsing or TTS). As with every non-Claude provider, second-pass POINT
+refinement is skipped — points are the model's raw estimates, and the model
+must be vision-capable to point at all.
+
 ## 2026-06-25
 
 ### fix — tray "Quit" now actually exits the app

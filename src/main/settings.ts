@@ -35,11 +35,23 @@ interface SettingsSchema {
   pushToTalkHotkey: string;
 
   // AI Provider
-  aiProvider: "anthropic" | "openai" | "openrouter" | "gemini" | "opencode-go";
+  aiProvider:
+    | "anthropic"
+    | "openai"
+    | "openrouter"
+    | "gemini"
+    | "opencode-go"
+    | "custom";
   claudeModel: string;
   openaiModel: string;
   openaiReasoning: "off" | "low" | "medium" | "high";
   openrouterModel: string;
+
+  // Custom (OpenAI-compatible) — user-supplied endpoint + model
+  customApiKey: string;
+  customBaseUrl: string;
+  customModel: string;
+  customReasoning: "off" | "low" | "medium" | "high";
 
   // OpenCode Go (OpenAI-compatible gateway; most models are text-only)
   opencodeGoApiKey: string;
@@ -107,6 +119,10 @@ const defaults: SettingsSchema = {
   openaiModel: "gpt-4o",
   openaiReasoning: "off",
   openrouterModel: "anthropic/claude-sonnet-4-5",
+  customApiKey: "",
+  customBaseUrl: "",
+  customModel: "",
+  customReasoning: "off",
   opencodeGoApiKey: "",
   opencodeGoBaseUrl: "",
   opencodeGoModel: "qwen3.7-plus",

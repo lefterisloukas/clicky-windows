@@ -12,7 +12,7 @@ Windows companion to [farzaa/clicky](https://github.com/farzaa/clicky) (macOS).
 - **Points at things** — animated cursor overlay that highlights UI elements Claude references
 - **Cursor buddy** — persistent blue glowing dot that follows your mouse (toggleable)
 - **Always on top** — optional pinned chat window that stays visible over other apps
-- **Multi-provider** — supports Anthropic, OpenAI, OpenRouter (300+ models), and Google Gemini
+- **Multi-provider** — supports Anthropic, OpenAI, OpenRouter (300+ models), Google Gemini, OpenCode Go, and any OpenAI-compatible endpoint (Custom)
 - **HIPAA mode** — force all processing local (transcription + TTS) except the LLM call
 - **Lives in your tray** — runs quietly as a system tray app
 
@@ -103,6 +103,8 @@ src/
 │   ├── openai-chat.ts  # OpenAI GPT API
 │   ├── openrouter-chat.ts  # OpenRouter API (300+ models)
 │   ├── gemini-chat.ts  # Google Gemini API (@google/genai, vision + chat)
+│   ├── opencode-go-chat.ts  # OpenCode Go gateway (OpenAI-compatible)
+│   ├── custom-chat.ts  # Custom OpenAI-compatible endpoint (user-supplied URL + model)
 │   ├── transcription/  # Pluggable: Groq (default), AssemblyAI, OpenAI, local Whisper
 │   └── tts/            # Pluggable: ElevenLabs, OpenAI, Windows SAPI
 ├── preload/        # Context bridge for renderer

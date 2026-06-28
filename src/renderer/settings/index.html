@@ -113,6 +113,7 @@
     .seg { display: grid; gap: 4px; background: var(--ground); border-radius: 8px; padding: 3px; }
     .seg.c4 { grid-template-columns: repeat(4, 1fr); }
     .seg.c5 { grid-template-columns: repeat(5, 1fr); }
+    .seg.c6 { grid-template-columns: repeat(6, 1fr); }
     .seg.c2x2 { grid-template-columns: repeat(2, 1fr); }
     .seg button { font: inherit; font-size: 10.5px; border: none; background: transparent; color: var(--muted);
       padding: 7px 0; border-radius: 6px; cursor: pointer; }
@@ -189,12 +190,13 @@
         <div class="body">
           <div class="nest">
             <div class="nlabel">Provider</div>
-            <div class="seg c5" id="segProvider">
+            <div class="seg c6" id="segProvider">
               <button data-value="anthropic">Anthropic</button>
               <button data-value="openai">OpenAI</button>
               <button data-value="openrouter">OpenRouter</button>
               <button data-value="gemini">Gemini</button>
-              <button data-value="opencode-go">OC&nbsp;Go</button>
+              <button data-value="opencode-go">OpenCode Go</button>
+              <button data-value="custom">Custom</button>
             </div>
 
             <div class="nlabel">Models · <b id="modelProviderLabel">Anthropic</b></div>
@@ -236,6 +238,11 @@
               <button type="button" class="test" id="testOpencodeGo">Test API connection</button>
               <div class="hint" id="testOpencodeGoResult"></div>
             </div>
+            <div id="customModelGroup" style="display:none">
+              <input type="text" id="customBaseUrl" placeholder="Base URL (e.g. https://host/v1)">
+              <input type="text" id="customModel" placeholder="Model name (e.g. gpt-4o)" style="margin-top:8px">
+              <div class="hint">Any OpenAI-compatible /chat/completions endpoint. The model must be vision-capable to point. API key (optional) under API keys.</div>
+            </div>
 
             <div id="reasoningGroup" style="display:none">
               <div class="nlabel">Reasoning · <b id="reasoningProviderLabel">Gemini</b></div>
@@ -258,6 +265,13 @@
                 <button data-value="medium">Med</button>
                 <button data-value="high">High</button>
               </div>
+              <div class="seg c4" id="segCustomReasoning" style="display:none">
+                <button data-value="off">Off</button>
+                <button data-value="low">Low</button>
+                <button data-value="medium">Med</button>
+                <button data-value="high">High</button>
+              </div>
+              <div class="hint" id="customReasoningHint" style="display:none">Sent as reasoning_effort only when not Off. Leave Off unless your model supports it.</div>
               <div class="hint" id="opencodeGoReasoningHint" style="display:none">Most vision models reason by default and ignore this; only some models accept an effort level.</div>
             </div>
           </div>
@@ -366,6 +380,7 @@
           <div class="krow"><div class="kmeta"><span class="svc">OpenRouter</span></div><input type="password" id="openrouterApiKey" placeholder="sk-or-…"></div>
           <div class="krow"><div class="kmeta"><span class="svc">Google</span></div><input type="password" id="geminiApiKey" placeholder="AIza…"></div>
           <div class="krow"><div class="kmeta"><span class="svc">OpenCode Go</span></div><input type="password" id="opencodeGoApiKey" placeholder="sk-…"></div>
+          <div class="krow"><div class="kmeta"><span class="svc">Custom</span><span class="tag">openai-compatible</span></div><input type="password" id="customApiKey" placeholder="(optional)"></div>
           <div class="nlabel">Voice services</div>
           <div class="krow"><div class="kmeta"><span class="svc">Groq</span><span class="tag">speech-to-text</span></div><input type="password" id="groqApiKey" placeholder="gsk-…"></div>
           <div class="krow"><div class="kmeta"><span class="svc">AssemblyAI</span><span class="tag">speech-to-text</span></div><input type="password" id="assemblyaiApiKey" placeholder="key"></div>
@@ -442,7 +457,7 @@
     const $ = (id) => document.getElementById(id);
     let S = {}; // settings cache
 
-    const PROVIDER_LABEL = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini', 'opencode-go': 'OpenCode Go' };
+    const PROVIDER_LABEL = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini', 'opencode-go': 'OpenCode Go', custom: 'Custom' };
     const THEME_LABEL = { 'sky-light': 'Sky · Light', 'sky-dark': 'Sky · Dark', 'rose-light': 'Rose · Light', 'rose-dark': 'Rose · Dark', 'vibe-spark': 'Vibe Spark' };
     // Theme is applied via window.clicky.applyTheme (validated, shared by all
     // windows — see src/preload/index.ts). markTheme also updates the picker UI.
@@ -451,7 +466,7 @@
       markSegmented('segTheme', theme);
       $('valTheme').textContent = THEME_LABEL[theme] || theme;
     }
-    const MODELHOST_LABEL = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini', 'opencode-go': 'OpenCode Go' };
+    const MODELHOST_LABEL = { anthropic: 'Anthropic', openai: 'OpenAI', openrouter: 'OpenRouter', gemini: 'Gemini', 'opencode-go': 'OpenCode Go', custom: 'Custom' };
     const STT_LABEL = { groq: 'Groq', openai: 'Whisper', assemblyai: 'AssemblyAI', 'whisper-local': 'Local' };
     const TTS_LABEL = { off: 'Off', local: 'Windows', kokoro: 'Kokoro', openai: 'OpenAI', elevenlabs: 'ElevenLabs' };
 
@@ -561,6 +576,7 @@
       if (p === 'openrouter') return S.openrouterModel;
       if (p === 'gemini') return S.geminiModel;
       if (p === 'opencode-go') return S.opencodeGoModel;
+      if (p === 'custom') return S.customModel;
       return S.claudeModel;
     }
     function shortModel(m) { return (m || '').replace(/^(anthropic|openai|google|meta-llama|deepseek|mistralai)\//, ''); }
@@ -572,14 +588,17 @@
       $('openrouterModelGroup').style.display = p === 'openrouter' ? '' : 'none';
       $('geminiModelGroup').style.display = p === 'gemini' ? '' : 'none';
       $('opencodeGoModelGroup').style.display = p === 'opencode-go' ? '' : 'none';
+      $('customModelGroup').style.display = p === 'custom' ? '' : 'none';
       $('modelProviderLabel').textContent = MODELHOST_LABEL[p] || p;
-      // reasoning visible only for openai + gemini + opencode-go
-      const showReason = p === 'openai' || p === 'gemini' || p === 'opencode-go';
+      // reasoning visible only for openai + gemini + opencode-go + custom
+      const showReason = p === 'openai' || p === 'gemini' || p === 'opencode-go' || p === 'custom';
       $('reasoningGroup').style.display = showReason ? '' : 'none';
       $('segOpenaiReasoning').style.display = p === 'openai' ? '' : 'none';
       $('segGeminiReasoning').style.display = p === 'gemini' ? '' : 'none';
       $('segOpencodeGoReasoning').style.display = p === 'opencode-go' ? '' : 'none';
       $('opencodeGoReasoningHint').style.display = p === 'opencode-go' ? '' : 'none';
+      $('segCustomReasoning').style.display = p === 'custom' ? '' : 'none';
+      $('customReasoningHint').style.display = p === 'custom' ? '' : 'none';
       $('reasoningProviderLabel').textContent = MODELHOST_LABEL[p] || p;
     }
     function updateSttUI() {
@@ -606,12 +625,15 @@
       $('valLlm').textContent = (PROVIDER_LABEL[p] || p) + ' · ' + shortModel(currentLlmModel());
       $('valStt').textContent = (STT_LABEL[stt] || stt) + (stt === 'groq' ? ' · ' + shortModel(S.groqSttModel) : '');
       $('valTts').textContent = (TTS_LABEL[tv] || tv) + (tv === 'kokoro' ? ' · ' + (S.kokoroVoice || '').replace(/^[ab][fm]_/, '') : '');
-      const keyCount = ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','opencodeGoApiKey','groqApiKey','assemblyaiApiKey','elevenlabsApiKey'].filter((k) => S[k]).length;
+      const keyCount = ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','opencodeGoApiKey','customApiKey','groqApiKey','assemblyaiApiKey','elevenlabsApiKey'].filter((k) => S[k]).length;
       $('valKeys').textContent = keyCount + ' connected';
       $('valHotkey').textContent = (S.pushToTalkHotkey || 'Ctrl+Shift').replace('Super', 'Win').replace('+', ' + ') + ' + Space';
       // connected indicator
       const keyMap = { anthropic: S.anthropicApiKey, openai: S.openaiApiKey, openrouter: S.openrouterApiKey, gemini: S.geminiApiKey, 'opencode-go': S.opencodeGoApiKey };
-      const connected = !!keyMap[p] || (S.useProxy && S.proxyUrl);
+      // Custom counts as "ready" once a base URL + model are set — the API key
+      // is optional (some self-hosted endpoints need none).
+      const customReady = p === 'custom' && S.customBaseUrl && S.customModel;
+      const connected = !!keyMap[p] || customReady || (S.useProxy && S.proxyUrl);
       $('liveDot').className = connected ? 'live' : 'live off';
       $('liveText').textContent = connected ? 'connected' : 'no key yet';
     }
@@ -622,8 +644,8 @@
       S = settings || {};
 
       // text/password/number/select fields that map 1:1
-      ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','opencodeGoApiKey','assemblyaiApiKey','groqApiKey','elevenlabsApiKey',
-       'proxyUrl','openrouterModel','geminiBaseUrl','opencodeGoBaseUrl','groqBaseUrl','pushToTalkHotkey',
+      ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','opencodeGoApiKey','customApiKey','assemblyaiApiKey','groqApiKey','elevenlabsApiKey',
+       'proxyUrl','openrouterModel','geminiBaseUrl','opencodeGoBaseUrl','customBaseUrl','customModel','groqBaseUrl','pushToTalkHotkey',
        'claudeModel','openaiModel','kokoroQuality'].forEach((k) => { if ($(k)) $(k).value = S[k] || ''; });
 
       $('kokoroSpeed').value = S.kokoroSpeed || 1;
@@ -635,6 +657,7 @@
       markSegmented('segOpenaiReasoning', S.openaiReasoning || 'off');
       markSegmented('segGeminiReasoning', S.geminiReasoning || 'default');
       markSegmented('segOpencodeGoReasoning', S.opencodeGoReasoning || 'off');
+      markSegmented('segCustomReasoning', S.customReasoning || 'off');
 
       renderGroqModelDropdown(S.groqSttModel || GROQ_DEFAULT_STT_MODEL, S.groqSttModelList || []);
       renderGeminiModelDropdown(S.geminiModel || GEMINI_DEFAULT_MODEL, S.geminiModelList || []);
@@ -689,6 +712,7 @@
     setupSegmented('segOpenaiReasoning', (v) => save('openaiReasoning', v));
     setupSegmented('segGeminiReasoning', (v) => save('geminiReasoning', v));
     setupSegmented('segOpencodeGoReasoning', (v) => save('opencodeGoReasoning', v));
+    setupSegmented('segCustomReasoning', (v) => save('customReasoning', v));
     // setupSegmented already highlights the clicked button instantly; save()
     // broadcasts settings:theme-changed back to THIS window too, so the
     // onThemeChanged handler below is what applies the theme and updates the
@@ -704,8 +728,8 @@
       if (!el) return;
       el.addEventListener('change', () => { save(key, transform ? transform(el.value) : el.value); updateGlance(); });
     }
-    ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','opencodeGoApiKey','assemblyaiApiKey','groqApiKey','elevenlabsApiKey',
-     'proxyUrl','openrouterModel','geminiBaseUrl','opencodeGoBaseUrl','groqBaseUrl','pushToTalkHotkey',
+    ['anthropicApiKey','openaiApiKey','openrouterApiKey','geminiApiKey','opencodeGoApiKey','customApiKey','assemblyaiApiKey','groqApiKey','elevenlabsApiKey',
+     'proxyUrl','openrouterModel','geminiBaseUrl','opencodeGoBaseUrl','customBaseUrl','customModel','groqBaseUrl','pushToTalkHotkey',
      'claudeModel','openaiModel','geminiModel','opencodeGoModel','groqSttModel','kokoroVoice','kokoroQuality'].forEach((k) => onChange(k, k));
     // Refresh the vision warning whenever the OpenCode Go model changes.
     $('opencodeGoModel').addEventListener('change', updateOpencodeGoWarning);
