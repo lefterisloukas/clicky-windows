@@ -6,6 +6,7 @@ import { OpenAIChatService } from "../services/openai-chat";
 import { OpenRouterChatService } from "../services/openrouter-chat";
 import { GeminiChatService } from "../services/gemini-chat";
 import { OpenCodeGoChatService } from "../services/opencode-go-chat";
+import { CustomChatService } from "../services/custom-chat";
 import {
   TranscriptionProvider,
   createTranscriptionProvider,
@@ -90,6 +91,8 @@ function providerLabel(provider: string): string {
       return "Gemini";
     case "opencode-go":
       return "OpenCode Go";
+    case "custom":
+      return "Custom";
     default:
       return provider || "AI";
   }
@@ -120,6 +123,7 @@ export class CompanionManager {
   private openrouterProvider: OpenRouterChatService | null = null;
   private geminiProvider: GeminiChatService | null = null;
   private opencodeGoProvider: OpenCodeGoChatService | null = null;
+  private customProvider: CustomChatService | null = null;
 
   constructor(settings: SettingsStore, overlayWindows: BrowserWindow[]) {
     this.settings = settings;
@@ -141,6 +145,9 @@ export class CompanionManager {
     }
     if (provider === "opencode-go") {
       return (this.opencodeGoProvider ??= new OpenCodeGoChatService(this.settings));
+    }
+    if (provider === "custom") {
+      return (this.customProvider ??= new CustomChatService(this.settings));
     }
     return this.getClaudeService();
   }
