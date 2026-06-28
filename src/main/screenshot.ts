@@ -27,8 +27,15 @@ export class ScreenCapture {
   /**
    * Capture all screens. Returns a downsampled JPEG for pass-1 AI input and
    * retains the native-resolution NativeImage on each result for refinement.
+   *
+   * @param onlyDisplayId when provided, emit a result ONLY for the display with
+   *   this `display.id` (the "current monitor only" setting). The kept result
+   *   still carries its **true** `displayIndex` so overlay routing lands on the
+   *   correct monitor. Note: `desktopCapturer.getSources` still grabs every
+   *   screen's thumbnail regardless — this trims what's sent to the LLM (the
+   *   expensive part), not the local capture cost.
    */
-  async captureAllScreens(): Promise<ScreenshotResult[]> {
+  async captureAllScreens(onlyDisplayId?: number): Promise<ScreenshotResult[]> {
     const displays = screen.getAllDisplays();
 
     // Ask for the largest native-pixel edge across all displays. Electron will
@@ -83,6 +90,10 @@ export class ScreenCapture {
 
     for (let i = 0; i < displays.length; i++) {
       const display = displays[i];
+      // "Current monitor only" mode: skip every display except the target, but
+      // keep the loop index `i` as the emitted result's true `displayIndex` so
+      // overlay routing still lands on the correct monitor.
+      if (onlyDisplayId !== undefined && display.id !== onlyDisplayId) continue;
       const matchedById = sources.find(
         (s) => s.display_id && s.display_id === String(display.id)
       );
@@ -151,6 +162,16 @@ export class ScreenCapture {
    */
   getCursorPosition(): { x: number; y: number } {
     return screen.getCursorScreenPoint();
+  }
+
+  /**
+   * Resolve the `display.id` of the monitor the given point (e.g. the cursor)
+   * is currently on. The returned id matches the `display.id` used in the
+   * `captureAllScreens` loop, so it can be passed straight to its
+   * `onlyDisplayId` parameter.
+   */
+  getCurrentDisplayId(point: { x: number; y: number }): number {
+    return screen.getDisplayNearestPoint(point).id;
   }
 }
 

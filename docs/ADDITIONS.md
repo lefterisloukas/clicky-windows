@@ -8,6 +8,39 @@ unless otherwise noted). Newest entries go at the top.
 
 ## 2026-06-28
 
+### feat — "Current monitor only" screenshot capture (opt-in)
+**Branch:** `feat/capture-current-monitor-only`
+**Components:** `src/main/screenshot.ts`, `src/main/companion.ts`,
+`src/main/settings.ts`, `src/renderer/settings/index.html`
+
+Adds an opt-in setting (Settings → Behavior → **Current monitor only**, default
+**off**) that, on multi-monitor setups, screenshots **only the display the
+cursor is currently on** instead of every screen. On a 2-monitor setup this
+roughly halves the pass-1 vision input tokens (and, for Anthropic, avoids
+refinement crops on the unused monitor).
+
+Implementation:
+
+- `ScreenCapture.captureAllScreens(onlyDisplayId?)` — when an id is passed, the
+  per-display loop emits a result only for that display while **preserving its
+  true `displayIndex`**. That invariant is what keeps overlay point-routing on
+  the correct monitor (routing keys off `displayIndex`, not array position).
+  `desktopCapturer.getSources` still grabs every screen's thumbnail, so this
+  trims what's sent to the LLM — the expensive part — not the local capture.
+- `ScreenCapture.getCurrentDisplayId(point)` — resolves the cursor's display via
+  `screen.getDisplayNearestPoint`.
+- `CompanionManager.captureScreens()` reads the cursor first, then, when the
+  setting is on, captures only that display. Includes a safety fallback to full
+  capture if the single shot comes back empty (e.g. blank thumbnail), so a query
+  is never left with zero screenshots. The audio pre-fetch path inherits this
+  automatically since it calls `captureScreens()` with no args.
+- No provider prompt changes needed: each provider labels images `screenN` by
+  array index from `screenshots.length`, so a single screenshot is simply
+  `screen0`.
+
+Trade-off: while on, the model can only see the cursor's monitor, so it won't
+point at elements on other displays — by design.
+
 ### feat — Custom (OpenAI-compatible) AI provider
 **Branch:** `feat/custom-openai-compatible-provider`
 **Components:** `src/services/custom-chat.ts` (new), `src/main/settings.ts`,

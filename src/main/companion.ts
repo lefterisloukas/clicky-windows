@@ -175,8 +175,22 @@ export class CompanionManager {
    * into processQuery, keeping it off the serial path.
    */
   async captureScreens(): Promise<CapturedScreens> {
-    const screenshots = await this.screenCapture.captureAllScreens();
+    // Read the cursor first — "current monitor only" mode needs it to pick the
+    // target display before capture.
     const cursorPosition = this.screenCapture.getCursorPosition();
+    let screenshots: ScreenshotResult[];
+    if (this.settings.get("captureCurrentMonitorOnly")) {
+      const displayId = this.screenCapture.getCurrentDisplayId(cursorPosition);
+      screenshots = await this.screenCapture.captureAllScreens(displayId);
+      // Safety fallback: if the target produced no usable shot (e.g. its
+      // thumbnail came back empty and was skipped), capture everything so a
+      // query is never left with zero screenshots.
+      if (screenshots.length === 0) {
+        screenshots = await this.screenCapture.captureAllScreens();
+      }
+    } else {
+      screenshots = await this.screenCapture.captureAllScreens();
+    }
     return { screenshots, cursorPosition };
   }
 
